@@ -116,10 +116,48 @@
                 <h2>Admin Dashboard</h2>
                 <p>Client & License Management System</p>
             </div>
+            <div class="admin-header-filters">
+                <div class="filter-group">
+                    <label for="global-constituency-filter">Constituency</label>
+                    <select id="global-constituency-filter" class="filter-select">
+                        <option value="">All Constituencies</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="global-island-filter">Island</label>
+                    <select id="global-island-filter" class="filter-select">
+                        <option value="">All Islands</option>
+                    </select>
+                </div>
+                <button id="clear-filters-btn" class="btn-secondary btn-compact" style="display: none;">
+                    <span data-icon="x"></span>
+                    Clear Filters
+                </button>
+            </div>
             <div class="admin-header-right">
-                <!-- Desktop View: Show email and logout button -->
-                <span id="admin-name-display" class="admin-email-display"></span>
-                <button id="admin-logout-btn" class="btn-secondary admin-logout-desktop">Logout</button>
+                <!-- Desktop View: Professional profile display -->
+                <div class="admin-profile-desktop">
+                    <div class="admin-profile-info-wrapper">
+                        <div class="admin-profile-avatar-desktop">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                        </div>
+                        <div class="admin-profile-text">
+                            <div class="admin-profile-label-desktop">Administrator</div>
+                            <div id="admin-name-display" class="admin-email-display"></div>
+                        </div>
+                    </div>
+                    <button id="admin-logout-btn" class="btn-secondary admin-logout-desktop">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                        <span>Logout</span>
+                    </button>
+                </div>
 
                 <!-- Mobile View: Profile icon with dropdown -->
                 <div class="admin-profile-dropdown">
@@ -138,7 +176,7 @@
                                 </svg>
                             </div>
                             <div class="admin-profile-info">
-                                <div class="admin-profile-label">Admin</div>
+                                <div class="admin-profile-label">Administrator</div>
                                 <div id="admin-profile-email" class="admin-profile-email"></div>
                             </div>
                         </div>
@@ -253,6 +291,9 @@
                                     <th>Client Code</th>
                                     <th>Name</th>
                                     <th>Email</th>
+                                    <th>Constituency</th>
+                                    <th>Island</th>
+                                    <th>License Code</th>
                                     <th>License Status</th>
                                     <th>Registered Date</th>
                                     <th>Last Active</th>
@@ -489,6 +530,20 @@
                         <label for="client-code-register">Client Code (4 digits)</label>
                         <input type="text" id="client-code-register" placeholder="0000" maxlength="4" pattern="[0-9]{4}" required>
                         <small>Unique 4-digit code for this client</small>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="client-constituency-register">Constituency <span style="color: red;">*</span></label>
+                            <select id="client-constituency-register" required>
+                                <option value="">Select Constituency</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="client-island-register">Island <span style="color: red;">*</span></label>
+                            <select id="client-island-register" required>
+                                <option value="">Select Island</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="client-temp-password">Temporary Password</label>

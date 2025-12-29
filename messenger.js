@@ -33,14 +33,15 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
 // Firebase Configuration (same as app.js)
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-    apiKey: "AIzaSyApT0uj8sz3mC8bDtLQeHHodAtZlqfJDns",
-    authDomain: "rajjecampaign.firebaseapp.com",
-    projectId: "rajjecampaign",
-    storageBucket: "rajjecampaign.firebasestorage.app",
-    messagingSenderId: "480799282234",
-    appId: "1:480799282234:web:a35c084610bcdfc2ed9103",
-    measurementId: "G-2K7J967N1V"
+    apiKey: "AIzaSyBKrq8w4A05FCWb2pdGZ_sGZi5wEqdMmxM",
+    authDomain: "myapp-5-8bc43.firebaseapp.com",
+    projectId: "myapp-5-8bc43",
+    storageBucket: "myapp-5-8bc43.firebasestorage.app",
+    messagingSenderId: "1096643150430",
+    appId: "1:1096643150430:web:0295ed5bae989263266acf",
+    measurementId: "G-XBPRHN715Z"
 };
 
 // Initialize Firebase instances (reuse if already initialized)

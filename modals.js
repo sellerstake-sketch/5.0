@@ -50,9 +50,9 @@ function ensureModalExists() {
             });
         }
 
-        // Close on overlay click
+        // Close on overlay click (only if import is not in progress)
         modalOverlay.addEventListener('click', (e) => {
-            if (e.target === modalOverlay) {
+            if (e.target === modalOverlay && !isBulkImportInProgress && !modalOverlay.hasAttribute('data-import-in-progress')) {
                 closeModal();
             }
         });
@@ -77,9 +77,6 @@ function getFormTemplate(type) {
 
 // Candidate Form Template
 function getCandidateFormTemplate() {
-    const constituencies = window.maldivesData.constituencies || [];
-    const constituencyOptions = constituencies.map(c => `<option value="${c}">${c}</option>`).join('');
-
     return `
         <form id="modal-form" class="modal-form">
             <div class="form-group">
@@ -96,18 +93,15 @@ function getCandidateFormTemplate() {
                     <label for="candidate-position">Position *</label>
                     <select id="candidate-position" name="candidate-position" required>
                         <option value="">Select position</option>
-                        <option value="WDC Member">WDC Member</option>
-                        <option value="Local Council Member">Local Council Member</option>
-                        <option value="Parliament Member">Parliament Member</option>
-                        <option value="President">President</option>
+                        <!-- Positions will be populated dynamically based on campaign type -->
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="candidate-constituency">Constituency *</label>
-                    <select id="candidate-constituency" name="candidate-constituency" required>
-                        <option value="">Select constituency</option>
-                        ${constituencyOptions}
+                    <label for="candidate-island">Island *</label>
+                    <select id="candidate-island" name="candidate-island" required>
+                        <option value="">Select Island</option>
                     </select>
+                    <small style="color: var(--text-light); font-size: 12px;">Islands from your constituency settings</small>
                 </div>
             </div>
             <div class="form-group">
@@ -202,15 +196,18 @@ function getVoterFormTemplate() {
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="voter-constituency">Constituency</label>
-                    <input type="text" id="voter-constituency" name="voter-constituency" readonly style="background: var(--light-color); cursor: not-allowed;" value="${(window.campaignData && window.campaignData.constituency) ? window.campaignData.constituency : ''}">
-                    <small style="color: var(--text-light); font-size: 12px;">Fetched from Campaign Setup</small>
+                    <label for="voter-constituency">Constituency <span style="color: red;">*</span></label>
+                    <select id="voter-constituency" name="voter-constituency" required>
+                        <option value="">Select Constituency</option>
+                    </select>
+                    <small style="color: var(--text-light); font-size: 12px;">Select the constituency (Dhaaira)</small>
                 </div>
                 <div class="form-group">
-                    <label for="voter-island">Island</label>
-                    <select id="voter-island" name="voter-island">
-                        <option value="">Select island</option>
+                    <label for="voter-island">Island <span style="color: red;">*</span></label>
+                    <select id="voter-island" name="voter-island" required>
+                        <option value="">Select Island</option>
                     </select>
+                    <small style="color: var(--text-light); font-size: 12px;">Islands will appear after selecting a constituency</small>
                 </div>
             </div>
             <div class="form-group">
@@ -290,9 +287,16 @@ function getEventFormTemplate() {
                     <input type="date" id="event-date" name="event-date" required>
                 </div>
                 <div class="form-group">
-                    <label for="event-location">Location *</label>
-                    <input type="text" id="event-location" name="event-location" placeholder="Enter location" required>
+                    <label for="event-venue">Venue *</label>
+                    <input type="text" id="event-venue" name="event-venue" placeholder="Enter venue" required>
                 </div>
+            </div>
+            <div class="form-group">
+                <label for="event-island">Island *</label>
+                <select id="event-island" name="event-island" required>
+                    <option value="">Select Island</option>
+                </select>
+                <small style="color: var(--text-light); font-size: 12px; margin-top: 4px;">Islands available in your constituency</small>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -348,9 +352,15 @@ function getCallFormTemplate() {
             </div>
             <div class="form-row">
                 <div class="form-group">
+                    <label for="call-voter-constituency">Constituency</label>
+                    <input type="text" id="call-voter-constituency" name="call-voter-constituency" placeholder="Auto-filled when voter selected" readonly style="background: var(--light-color);">
+                </div>
+                <div class="form-group">
                     <label for="call-voter-island">Island</label>
                     <input type="text" id="call-voter-island" name="call-voter-island" placeholder="Auto-filled when voter selected" readonly style="background: var(--light-color);">
                 </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
                     <label for="call-voter-address">Permanent Address</label>
                     <input type="text" id="call-voter-address" name="call-voter-address" placeholder="Auto-filled when voter selected" readonly style="background: var(--light-color);">
@@ -468,8 +478,11 @@ function getAgentFormTemplate() {
                 <small>Leave empty to auto-generate</small>
             </div>
             <div class="form-group">
-                <label for="agent-area">Assigned Area *</label>
-                <input type="text" id="agent-area" name="agent-area" placeholder="Enter assigned area/island" required>
+                <label for="agent-area">Island *</label>
+                <select id="agent-area" name="agent-area" required>
+                    <option value="">Select Island</option>
+                </select>
+                <small>Islands available in your constituency</small>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -726,7 +739,7 @@ async function handleFormSubmit(type, formData) {
                 const candidateName = formData.get('candidate-name');
                 const candidateId = formData.get('candidate-id');
                 const candidatePosition = formData.get('candidate-position');
-                const candidateConstituency = formData.get('candidate-constituency');
+                const candidateIsland = formData.get('candidate-island');
                 const candidateStatus = formData.get('candidate-status');
 
                 if (!candidateName || !candidateName.trim()) {
@@ -737,10 +750,15 @@ async function handleFormSubmit(type, formData) {
                     showModalError('Position is required.');
                     return;
                 }
-                if (!candidateConstituency || !candidateConstituency.trim()) {
-                    showModalError('Constituency is required.');
+                if (!candidateIsland || !candidateIsland.trim()) {
+                    showModalError('Island is required.');
                     return;
                 }
+                
+                // Get constituency from island for backward compatibility
+                const candidateConstituency = window.getConstituencyForIsland && typeof window.getConstituencyForIsland === 'function' 
+                    ? window.getConstituencyForIsland(candidateIsland.trim()) 
+                    : (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : null);
 
                 // If editing, preserve candidateId from existing data if not provided
                 let finalCandidateId = candidateId && candidateId.trim() ? candidateId.trim() : null;
@@ -756,7 +774,8 @@ async function handleFormSubmit(type, formData) {
                     name: candidateName.trim(),
                     candidateId: finalCandidateId,
                     position: candidatePosition.trim(),
-                    constituency: candidateConstituency.trim(),
+                    island: candidateIsland.trim(),
+                    constituency: candidateConstituency || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : null),
                     status: candidateStatus && candidateStatus.trim() ? candidateStatus.trim() : 'active',
                     [emailField]: window.userEmail
                 };
@@ -901,7 +920,8 @@ async function handleFormSubmit(type, formData) {
             case 'event':
                 const eventName = formData.get('event-name');
                 const eventDate = formData.get('event-date');
-                const eventLocation = formData.get('event-location');
+                const eventVenue = formData.get('event-venue');
+                const eventIsland = formData.get('event-island');
                 const eventStartTime = formData.get('event-start-time');
                 const eventEndTime = formData.get('event-end-time');
                 const eventAttendees = formData.get('event-attendees');
@@ -915,8 +935,12 @@ async function handleFormSubmit(type, formData) {
                     showModalError('Event date is required.');
                     return;
                 }
-                if (!eventLocation || !eventLocation.trim()) {
-                    showModalError('Location is required.');
+                if (!eventVenue || !eventVenue.trim()) {
+                    showModalError('Venue is required.');
+                    return;
+                }
+                if (!eventIsland || !eventIsland.trim()) {
+                    showModalError('Island is required.');
                     return;
                 }
                 if (!eventStartTime || !eventStartTime.trim()) {
@@ -936,7 +960,9 @@ async function handleFormSubmit(type, formData) {
                 dataToSave = {
                     eventName: eventName.trim(),
                     eventDate: eventDateValue || serverTimestamp(),
-                    location: eventLocation.trim(),
+                    location: eventVenue.trim(), // Keep 'location' field for backward compatibility
+                    venue: eventVenue.trim(),
+                    island: eventIsland.trim(),
                     startTime: eventStartTime.trim(),
                     endTime: cleanFormValue(eventEndTime),
                     expectedAttendees: eventAttendees && eventAttendees.trim() ? parseInt(eventAttendees) : null,
@@ -950,6 +976,8 @@ async function handleFormSubmit(type, formData) {
                 const callVoterName = formData.get('call-voter-name');
                 const callVoterId = formData.get('call-voter-id');
                 const callVoterPhone = formData.get('call-voter-phone');
+                const callVoterConstituency = formData.get('call-voter-constituency');
+                const callVoterIsland = formData.get('call-voter-island');
                 // Check both input and dropdown for caller name
                 const callCallerNameInput = formData.get('call-caller-name');
                 const callCallerNameDropdown = formData.get('call-caller-name-dropdown');
@@ -977,6 +1005,8 @@ async function handleFormSubmit(type, formData) {
                     voterId: cleanFormValue(callVoterId),
                     voterDocumentId: cleanFormValue(callVoterDocumentId), // Save the document ID
                     phone: cleanFormValue(callVoterPhone),
+                    constituency: cleanFormValue(callVoterConstituency) || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : ''),
+                    island: cleanFormValue(callVoterIsland),
                     caller: callCallerName.trim(),
                     callDate: callDateValue ? new Date(callDateValue) : serverTimestamp(),
                     status: callStatus.trim(),
@@ -1127,7 +1157,7 @@ async function handleFormSubmit(type, formData) {
                     return;
                 }
                 if (!agentArea || !agentArea.trim()) {
-                    showModalError('Assigned area is required.');
+                    showModalError('Island is required.');
                     return;
                 }
 
@@ -1827,36 +1857,275 @@ function showModalError(message) {
     }
 }
 
-// Setup island dropdown based on atoll selection (for backward compatibility)
-// Note: Constituency is now auto-filled from campaign setup, but island selection remains
-function setupIslandDropdown() {
+// Setup constituency and island dropdowns
+function setupConstituencyIslandDropdowns() {
+    const constituencySelect = document.getElementById('voter-constituency');
     const islandSelect = document.getElementById('voter-island');
+    
+    if (!constituencySelect || !islandSelect) return;
+    
+    // Populate constituency dropdown
+    if (window.getAllConstituencies && typeof window.getAllConstituencies === 'function') {
+        const constituencies = window.getAllConstituencies();
+        
+        // Clear existing options except the first one
+        const firstOption = constituencySelect.querySelector('option[value=""]');
+        constituencySelect.innerHTML = '';
+        if (firstOption) {
+            constituencySelect.appendChild(firstOption);
+        } else {
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Select Constituency';
+            constituencySelect.appendChild(defaultOption);
+        }
+        
+        constituencies.forEach(constituency => {
+            const option = document.createElement('option');
+            option.value = constituency;
+            option.textContent = constituency;
+            // Set default if campaign data has constituency
+            if (window.campaignData && window.campaignData.constituency === constituency) {
+                option.selected = true;
+            }
+            constituencySelect.appendChild(option);
+        });
+    }
+    
+    // Setup constituency change listener
+    constituencySelect.addEventListener('change', function() {
+        const selectedConstituency = this.value;
+        populateIslandDropdownForVoter(selectedConstituency);
+    });
+    
+    // If campaign data has constituency, populate islands immediately
+    if (window.campaignData && window.campaignData.constituency) {
+        populateIslandDropdownForVoter(window.campaignData.constituency);
+    }
+}
 
-    // If campaign data has an island, set it as default
-    if (islandSelect && window.campaignData && window.campaignData.island) {
-        // Populate island dropdown with all islands from maldivesData
-        if (window.maldivesData && window.maldivesData.islands) {
-            const allIslands = [];
-            Object.values(window.maldivesData.islands).forEach(islandList => {
-                islandList.forEach(island => {
-                    if (!allIslands.includes(island)) {
-                        allIslands.push(island);
-                    }
-                });
-            });
+// Populate island dropdown based on selected constituency
+function populateIslandDropdownForVoter(constituency) {
+    const islandSelect = document.getElementById('voter-island');
+    if (!islandSelect) return;
+    
+    // Clear existing options
+    islandSelect.innerHTML = '<option value="">Select Island</option>';
+    
+    if (constituency && window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+        const islands = window.getIslandsForConstituency(constituency);
+        
+        islands.forEach(island => {
+            const option = document.createElement('option');
+            option.value = island;
+            option.textContent = island;
+            // Set default if campaign data has island
+            if (window.campaignData && window.campaignData.island === island) {
+                option.selected = true;
+            }
+            islandSelect.appendChild(option);
+        });
+    }
+}
 
-            allIslands.sort().forEach(island => {
+// Setup island dropdown for agent form based on constituency setting
+function setupAgentIslandDropdown() {
+    const islandSelect = document.getElementById('agent-area');
+    if (!islandSelect) return;
+    
+    // Clear existing options
+    islandSelect.innerHTML = '<option value="">Select Island</option>';
+    
+    // Get constituency from campaign data
+    const constituency = window.campaignData && window.campaignData.constituency;
+    
+    if (constituency && window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+        const islands = window.getIslandsForConstituency(constituency);
+        
+        if (islands && islands.length > 0) {
+            islands.forEach(island => {
                 const option = document.createElement('option');
                 option.value = island;
                 option.textContent = island;
-                if (island === window.campaignData.island) {
+                islandSelect.appendChild(option);
+            });
+        } else {
+            // If no islands found, show a message
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No islands found for this constituency';
+            option.disabled = true;
+            islandSelect.appendChild(option);
+        }
+    } else {
+        // If no constituency or function not available, show a message
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Constituency not set in settings';
+        option.disabled = true;
+        islandSelect.appendChild(option);
+    }
+}
+
+// Expose function globally for use in pages.js
+window.populateIslandDropdownForVoter = populateIslandDropdownForVoter;
+
+// Get positions based on campaign type
+function getCandidatePositionsForCampaignType() {
+    const campaignType = window.campaignData && window.campaignData.campaignType;
+    
+    if (!campaignType) {
+        // If no campaign type, return all positions
+        return [
+            { value: 'WDC Member', label: 'WDC Member' },
+            { value: 'WDC President', label: 'WDC President' },
+            { value: 'Local Council Member', label: 'Local Council Member' },
+            { value: 'Local Council President', label: 'Local Council President' },
+            { value: 'Parliament Member', label: 'Parliament Member' },
+            { value: 'Member of Parliament', label: 'Member of Parliament' },
+            { value: 'President', label: 'President' },
+            { value: 'Vice President', label: 'Vice President' }
+        ];
+    }
+    
+    // Map campaign types to positions
+    const positionMap = {
+        'WDC': [
+            { value: 'WDC Member', label: 'WDC Member' },
+            { value: 'WDC President', label: 'WDC President' },
+            { value: 'Local Council Member', label: 'Local Council Member' },
+            { value: 'Local Council President', label: 'Local Council President' }
+        ],
+        'Parliament': [
+            { value: 'Parliament Member', label: 'Parliament Member' },
+            { value: 'Member of Parliament', label: 'Member of Parliament' }
+        ],
+        'Presidential': [
+            { value: 'President', label: 'President' },
+            { value: 'Vice President', label: 'Vice President' }
+        ]
+    };
+    
+    return positionMap[campaignType] || positionMap['WDC']; // Default to WDC if unknown
+}
+
+// Setup candidate position dropdown based on campaign type
+function setupCandidatePositionDropdown() {
+    const positionSelect = document.getElementById('candidate-position');
+    if (!positionSelect) return;
+    
+    // Clear existing options except the first one
+    const firstOption = positionSelect.querySelector('option[value=""]');
+    positionSelect.innerHTML = '';
+    if (firstOption) {
+        positionSelect.appendChild(firstOption);
+    } else {
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select position';
+        positionSelect.appendChild(defaultOption);
+    }
+    
+    // Get positions for current campaign type
+    const positions = getCandidatePositionsForCampaignType();
+    
+    positions.forEach(position => {
+        const option = document.createElement('option');
+        option.value = position.value;
+        option.textContent = position.label;
+        positionSelect.appendChild(option);
+    });
+}
+
+// Setup candidate island dropdown
+function setupCandidateIslandDropdown() {
+    const islandSelect = document.getElementById('candidate-island');
+    if (!islandSelect) return;
+    
+    // Clear existing options
+    islandSelect.innerHTML = '<option value="">Select Island</option>';
+    
+    // Get constituency from campaign data
+    const constituency = window.campaignData && window.campaignData.constituency;
+    
+    if (constituency && window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+        const islands = window.getIslandsForConstituency(constituency);
+        
+        if (islands && islands.length > 0) {
+            islands.forEach(island => {
+                const option = document.createElement('option');
+                option.value = island;
+                option.textContent = island;
+                islandSelect.appendChild(option);
+            });
+        } else {
+            // If no islands found, show a message
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No islands found for this constituency';
+            option.disabled = true;
+            islandSelect.appendChild(option);
+        }
+    } else {
+        // If no constituency or function not available, show a message
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Constituency not set in settings';
+        option.disabled = true;
+        islandSelect.appendChild(option);
+    }
+}
+
+// Expose functions globally for use in pages.js
+window.setupCandidateIslandDropdown = setupCandidateIslandDropdown;
+window.setupCandidatePositionDropdown = setupCandidatePositionDropdown;
+window.getCandidatePositionsForCampaignType = getCandidatePositionsForCampaignType;
+
+// Setup event island dropdown
+function setupEventIslandDropdown(selectedIsland = null) {
+    const islandSelect = document.getElementById('event-island');
+    if (!islandSelect) return;
+    
+    // Clear existing options
+    islandSelect.innerHTML = '<option value="">Select Island</option>';
+    
+    // Get constituency from campaign data
+    const constituency = window.campaignData && window.campaignData.constituency;
+    
+    if (constituency && window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+        const islands = window.getIslandsForConstituency(constituency);
+        
+        if (islands && islands.length > 0) {
+            islands.forEach(island => {
+                const option = document.createElement('option');
+                option.value = island;
+                option.textContent = island;
+                // Pre-select if provided (for edit mode)
+                if (selectedIsland && island === selectedIsland) {
                     option.selected = true;
                 }
                 islandSelect.appendChild(option);
             });
+        } else {
+            // If no islands found, show a message
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No islands found for this constituency';
+            option.disabled = true;
+            islandSelect.appendChild(option);
         }
+    } else {
+        // If no constituency or function not available, show a message
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Constituency not set in settings';
+        option.disabled = true;
+        islandSelect.appendChild(option);
     }
 }
+
+// Expose function globally for use in pages.js
+window.setupEventIslandDropdown = setupEventIslandDropdown;
 
 // Open modal function
 function openModal(type, itemId = null) {
@@ -1937,6 +2206,24 @@ function openModal(type, itemId = null) {
                 setTimeout(() => setupCallFormForLink(), 100);
             }
 
+            // Setup island dropdown for agent form
+            if (type === 'agent') {
+                setTimeout(() => setupAgentIslandDropdown(), 100);
+            }
+            
+            // Setup island dropdown and position dropdown for candidate form
+            if (type === 'candidate') {
+                setTimeout(() => {
+                    setupCandidatePositionDropdown();
+                    setupCandidateIslandDropdown();
+                }, 100);
+            }
+            
+            // Setup island dropdown for event form
+            if (type === 'event') {
+                setTimeout(() => setupEventIslandDropdown(), 100);
+            }
+
             freshForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 console.log('[Modal] Form submit triggered for type:', type);
@@ -1982,19 +2269,12 @@ function openModal(type, itemId = null) {
             }, 100);
         }
 
-        // Setup island dropdown for voter form
+        // Setup constituency and island dropdowns for voter form
         if (type === 'voter') {
             setTimeout(() => {
-                setupIslandDropdown();
-                // Set default constituency if available (auto-filled from campaign setup)
-                const constituencyInput = document.getElementById('voter-constituency');
-                if (constituencyInput) {
-                    // If editing, constituency will be set by populateVoterEditForm
-                    // Otherwise, use campaign data
-                    if (!itemId && window.campaignData && window.campaignData.constituency) {
-                        constituencyInput.value = window.campaignData.constituency;
-                    }
-                }
+                setupConstituencyIslandDropdowns();
+                // If editing, populateVoterEditForm will handle setting values
+                // Otherwise, campaign data defaults are set in setupConstituencyIslandDropdowns
 
                 // Setup image preview
                 const imageInput = document.getElementById('voter-image');
@@ -2126,6 +2406,12 @@ function openModal(type, itemId = null) {
 
 // Close modal function
 function closeModal() {
+    // Prevent closing if bulk import is in progress
+    if (isBulkImportInProgress) {
+        console.log('[closeModal] Cannot close modal - bulk import in progress');
+        return;
+    }
+    
     try {
         const modalOverlay = document.getElementById('modal-overlay');
         if (modalOverlay) {
@@ -2292,6 +2578,7 @@ function setupCallVoterDropdown() {
     const voterDropdown = document.getElementById('call-voter-dropdown');
     const voterIdInput = document.getElementById('call-voter-id');
     const voterPhoneInput = document.getElementById('call-voter-phone');
+    const voterConstituencyInput = document.getElementById('call-voter-constituency');
     const voterIslandInput = document.getElementById('call-voter-island');
     const voterAddressInput = document.getElementById('call-voter-address');
     const voterIdHidden = document.getElementById('call-voter-id-hidden');
@@ -2314,7 +2601,8 @@ function setupCallVoterDropdown() {
                 name: data.name || 'N/A',
                 idNumber: data.idNumber || data.voterId || id,
                 phone: data.phone || data.phoneNumber || data.mobile || data.contact || data.number || '',
-                island: data.island || data.constituency || '',
+                constituency: data.constituency || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : '') || '',
+                island: data.island || '',
                 address: data.address || data.permanentAddress || data.location || ''
             }));
             return;
@@ -2344,7 +2632,8 @@ function setupCallVoterDropdown() {
                         name: data.name || 'N/A',
                         idNumber: data.idNumber || data.voterId || doc.id,
                         phone: data.phone || data.phoneNumber || data.mobile || data.contact || data.number || '',
-                        island: data.island || data.constituency || '',
+                        constituency: data.constituency || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : '') || '',
+                        island: data.island || '',
                         address: data.address || data.permanentAddress || data.location || ''
                     };
                 });
@@ -2375,9 +2664,9 @@ function setupCallVoterDropdown() {
 
         // Render dropdown options
         voterDropdown.innerHTML = filteredVoters.map(voter => `
-            <div class="dropdown-option" data-voter-id="${voter.id}" data-voter-name="${voter.name}" data-voter-idnumber="${voter.idNumber}" data-voter-phone="${voter.phone || ''}" data-voter-island="${voter.island || ''}" data-voter-address="${(voter.address || '').replace(/"/g, '&quot;')}" style="padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border-light); transition: background 0.2s;">
+            <div class="dropdown-option" data-voter-id="${voter.id}" data-voter-name="${voter.name}" data-voter-idnumber="${voter.idNumber}" data-voter-phone="${voter.phone || ''}" data-voter-constituency="${(voter.constituency || '').replace(/"/g, '&quot;')}" data-voter-island="${(voter.island || '').replace(/"/g, '&quot;')}" data-voter-address="${(voter.address || '').replace(/"/g, '&quot;')}" style="padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border-light); transition: background 0.2s;">
                 <div style="font-weight: 600; color: var(--text-color); margin-bottom: 4px;">${voter.name}</div>
-                <div style="font-size: 12px; color: var(--text-light);">ID: ${voter.idNumber}${voter.phone ? ` • Phone: ${voter.phone}` : ''}${voter.island ? ` • ${voter.island}` : ''}</div>
+                <div style="font-size: 12px; color: var(--text-light);">ID: ${voter.idNumber}${voter.phone ? ` • Phone: ${voter.phone}` : ''}${voter.constituency ? ` • ${voter.constituency}` : ''}${voter.island ? ` • ${voter.island}` : ''}</div>
             </div>
         `).join('');
 
@@ -2388,6 +2677,7 @@ function setupCallVoterDropdown() {
                 const voterName = option.dataset.voterName;
                 const voterIdNumber = option.dataset.voterIdnumber;
                 const voterPhone = option.dataset.voterPhone || '';
+                const voterConstituency = option.dataset.voterConstituency || '';
                 const voterIsland = option.dataset.voterIsland || '';
                 const voterAddress = option.dataset.voterAddress || '';
 
@@ -2395,6 +2685,7 @@ function setupCallVoterDropdown() {
                 voterInput.value = voterName;
                 if (voterIdInput) voterIdInput.value = voterIdNumber;
                 if (voterPhoneInput) voterPhoneInput.value = voterPhone;
+                if (voterConstituencyInput) voterConstituencyInput.value = voterConstituency;
                 if (voterIslandInput) voterIslandInput.value = voterIsland;
                 if (voterAddressInput) voterAddressInput.value = voterAddress;
                 if (voterIdHidden) {
@@ -2485,6 +2776,7 @@ async function populateCallEditForm(callId) {
         const voterNameInput = document.getElementById('call-voter-name');
         const voterIdInput = document.getElementById('call-voter-id');
         const voterPhoneInput = document.getElementById('call-voter-phone');
+        const voterConstituencyInput = document.getElementById('call-voter-constituency');
         const voterIslandInput = document.getElementById('call-voter-island');
         const voterAddressInput = document.getElementById('call-voter-address');
         const voterIdHidden = document.getElementById('call-voter-id-hidden');
@@ -2496,7 +2788,8 @@ async function populateCallEditForm(callId) {
         if (voterNameInput) voterNameInput.value = callData.voterName || '';
         if (voterIdInput) voterIdInput.value = callData.voterId || '';
         if (voterPhoneInput) voterPhoneInput.value = callData.phone || '';
-        if (voterIslandInput) voterIslandInput.value = callData.island || '';
+        if (voterConstituencyInput) voterConstituencyInput.value = callData.constituency || callData.voterConstituency || '';
+        if (voterIslandInput) voterIslandInput.value = callData.island || callData.voterIsland || '';
         if (voterAddressInput) voterAddressInput.value = callData.address || '';
         if (voterIdHidden && callData.voterDocumentId) voterIdHidden.value = callData.voterDocumentId;
         if (callerNameInput) callerNameInput.value = callData.caller || '';
@@ -2930,6 +3223,11 @@ function parseCSV(text) {
         // Gender column
         'gender': 'gender',
         'sex': 'gender',
+        // Constituency column
+        'constituency': 'constituency',
+        'voterconstituency': 'constituency',
+        'dhaaira': 'constituency',
+        'dhaairaa': 'constituency',
         // Island column
         'island': 'island',
         // Ballot Box column
@@ -2992,6 +3290,8 @@ function parseCSV(text) {
         if (lower === 'age') return 'age';
         // Gender
         if (lower.includes('gender') || lower === 'sex') return 'gender';
+        // Constituency
+        if (lower.includes('constituency') || lower.includes('dhaaira')) return 'constituency';
         // Island
         if (lower === 'island') return 'island';
         // Ballot Box
@@ -3126,10 +3426,10 @@ function displayCSVPreview(data, headerEl, bodyEl, countEl, originalHeaders = nu
 
 // Download CSV template
 function downloadCSVTemplate() {
-    const headers = ['No.', 'Image', 'ID Number', 'Name', 'Date of Birth', 'Age', 'Gender', 'Island', 'Ballot Box', 'Permanent Address', 'Current Location', 'Number'];
+    const headers = ['No.', 'Image', 'ID Number', 'Name', 'Date of Birth', 'Age', 'Gender', 'Constituency', 'Island', 'Ballot Box', 'Permanent Address', 'Current Location', 'Number'];
     const sampleRows = [
-        ['1', '', 'A123456', 'Ahmed Ali', '1990-01-15', '34', 'Male', 'Malé', 'DHU-98', 'Malé, Maldives', 'Malé, Maldives', '+960 1234567'],
-        ['2', '', 'B789012', 'Aisha Mohamed', '1985-05-20', '39', 'Female', 'Hulhumalé', 'DHU-99', 'Hulhumalé, Maldives', 'Hulhumalé, Maldives', '+960 7654321']
+        ['1', '', 'A123456', 'Ahmed Ali', '1990-01-15', '34', 'Male', 'M01 Meedhoo Dhaaira', 'Malé', 'DHU-98', 'Malé, Maldives', 'Malé, Maldives', '+960 1234567'],
+        ['2', '', 'B789012', 'Aisha Mohamed', '1985-05-20', '39', 'Female', 'M01 Meedhoo Dhaaira', 'Hulhumalé', 'DHU-99', 'Hulhumalé, Maldives', 'Hulhumalé, Maldives', '+960 7654321']
     ];
 
     let csv = headers.join(',') + '\n';
@@ -3148,6 +3448,9 @@ function downloadCSVTemplate() {
     window.URL.revokeObjectURL(url);
 }
 
+// Track bulk import status
+let isBulkImportInProgress = false;
+
 // Handle batch voter import
 async function handleBatchVoterImport(csvDataArray) {
     // Ensure csvData is an array
@@ -3162,9 +3465,35 @@ async function handleBatchVoterImport(csvDataArray) {
     const progressText = document.getElementById('batch-progress-text');
     const startBtn = document.getElementById('start-batch-import-btn');
     const errorEl = document.getElementById('batch-import-error');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const closeBtn = modalOverlay ? modalOverlay.querySelector('#modal-close-btn') : null;
+    const cancelBtn = document.querySelector('#batch-import-form .btn-secondary');
 
     if (errorEl) {
         errorEl.style.display = 'none';
+    }
+
+    // Set import in progress flag and disable modal closing
+    isBulkImportInProgress = true;
+    
+    // Disable close button
+    if (closeBtn) {
+        closeBtn.style.pointerEvents = 'none';
+        closeBtn.style.opacity = '0.5';
+        closeBtn.style.cursor = 'not-allowed';
+    }
+    
+    // Disable cancel button
+    if (cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.style.pointerEvents = 'none';
+        cancelBtn.style.opacity = '0.5';
+        cancelBtn.style.cursor = 'not-allowed';
+    }
+    
+    // Prevent closing on overlay click by adding a data attribute
+    if (modalOverlay) {
+        modalOverlay.setAttribute('data-import-in-progress', 'true');
     }
 
     if (progressDiv) progressDiv.style.display = 'block';
@@ -3219,6 +3548,7 @@ async function handleBatchVoterImport(csvDataArray) {
                 const name = cleanValue(row.name || row.fullname || row.votername);
                 const permanentAddress = cleanValue(row.permanentaddress || row.address || row.permanent);
                 const currentLocation = cleanValue(row.currentlocation || row.location || row.current);
+                const constituency = cleanValue(row.constituency || row.voterconstituency || row.dhaaira);
 
                 const voterData = {
                     idNumber: idNumber,
@@ -3227,6 +3557,8 @@ async function handleBatchVoterImport(csvDataArray) {
                     dateOfBirth: cleanValue(row.dateofbirth || row.dob || row.birthdate),
                     age: row.age ? (parseInt(row.age) || null) : (row.dateofbirth || row.dob ? calculateAge(row.dateofbirth || row.dob) : null),
                     gender: cleanValue((row.gender || row.sex || '').toLowerCase()),
+                    constituency: constituency, // Add constituency field
+                    voterConstituency: constituency, // Also store as voterConstituency for backward compatibility
                     atoll: null, // Can be extracted from island if needed
                     island: cleanValue(row.island),
                     ballot: cleanValue(ballot || row.ballot),
@@ -3296,6 +3628,29 @@ async function handleBatchVoterImport(csvDataArray) {
             window.clearVoterCache();
         }
 
+        // Reset import flag and re-enable modal closing
+        isBulkImportInProgress = false;
+        
+        // Re-enable close button
+        if (closeBtn) {
+            closeBtn.style.pointerEvents = 'auto';
+            closeBtn.style.opacity = '1';
+            closeBtn.style.cursor = 'pointer';
+        }
+        
+        // Re-enable cancel button
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.style.pointerEvents = 'auto';
+            cancelBtn.style.opacity = '1';
+            cancelBtn.style.cursor = 'pointer';
+        }
+        
+        // Re-enable overlay click
+        if (modalOverlay) {
+            modalOverlay.removeAttribute('data-import-in-progress');
+        }
+
         // Close modal and immediately reload voter table data
         closeModal();
         if (window.reloadTableData) {
@@ -3308,6 +3663,30 @@ async function handleBatchVoterImport(csvDataArray) {
 
     } catch (error) {
         console.error('Batch import error:', error);
+        
+        // Reset import flag on error
+        isBulkImportInProgress = false;
+        
+        // Re-enable close button on error
+        if (closeBtn) {
+            closeBtn.style.pointerEvents = 'auto';
+            closeBtn.style.opacity = '1';
+            closeBtn.style.cursor = 'pointer';
+        }
+        
+        // Re-enable cancel button on error
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.style.pointerEvents = 'auto';
+            cancelBtn.style.opacity = '1';
+            cancelBtn.style.cursor = 'pointer';
+        }
+        
+        // Re-enable overlay click on error
+        if (modalOverlay) {
+            modalOverlay.removeAttribute('data-import-in-progress');
+        }
+        
         showModalError('Batch import failed: ' + error.message);
         if (progressDiv) progressDiv.style.display = 'none';
         if (startBtn) startBtn.disabled = false;

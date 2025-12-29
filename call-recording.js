@@ -1,19 +1,21 @@
 // Call Recording Portal JavaScript
 // Handles call link access code validation and call recording
 
-// Firebase Configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-    apiKey: "AIzaSyApT0uj8sz3mC8bDtLQeHHodAtZlqfJDns",
-    authDomain: "rajjecampaign.firebaseapp.com",
-    projectId: "rajjecampaign",
-    storageBucket: "rajjecampaign.firebasestorage.app",
-    messagingSenderId: "480799282234",
-    appId: "1:480799282234:web:a35c084610bcdfc2ed9103",
-    measurementId: "G-2K7J967N1V"
+  apiKey: "AIzaSyBKrq8w4A05FCWb2pdGZ_sGZi5wEqdMmxM",
+  authDomain: "myapp-5-8bc43.firebaseapp.com",
+  projectId: "myapp-5-8bc43",
+  storageBucket: "myapp-5-8bc43.firebasestorage.app",
+  messagingSenderId: "1096643150430",
+  appId: "1:1096643150430:web:0295ed5bae989263266acf",
+  measurementId: "G-XBPRHN715Z"
 };
 
 import {
-    initializeApp
+    initializeApp,
+    getApps,
+    getApp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import {
     getAuth,
@@ -30,10 +32,10 @@ import {
     increment
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth();
-const db = getFirestore();
+// Initialize Firebase (check if already initialized)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 // Global variables
 let currentLinkData = null;
@@ -329,9 +331,15 @@ async function loadCallForm(container) {
                 <input type="tel" id="call-voter-phone" name="call-voter-phone" readonly class="readonly-input">
             </div>
 
-            <div class="form-group">
-                <label for="call-voter-island">Island</label>
-                <input type="text" id="call-voter-island" name="call-voter-island" readonly class="readonly-input">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="call-voter-constituency">Constituency</label>
+                    <input type="text" id="call-voter-constituency" name="call-voter-constituency" readonly class="readonly-input">
+                </div>
+                <div class="form-group">
+                    <label for="call-voter-island">Island</label>
+                    <input type="text" id="call-voter-island" name="call-voter-island" readonly class="readonly-input">
+                </div>
             </div>
 
             <div class="form-group">
@@ -403,6 +411,7 @@ async function setupVoterSearch() {
     const voterDropdown = document.getElementById('call-voter-dropdown');
     const voterIdInput = document.getElementById('call-voter-id');
     const voterPhoneInput = document.getElementById('call-voter-phone');
+    const voterConstituencyInput = document.getElementById('call-voter-constituency');
     const voterIslandInput = document.getElementById('call-voter-island');
     const voterAddressInput = document.getElementById('call-voter-address');
     const voterIdHidden = document.getElementById('call-voter-id-hidden');
@@ -538,7 +547,8 @@ async function setupVoterSearch() {
             const name = voter.name || 'N/A';
             const idNumber = voter.voterId || voter.idNumber || 'N/A';
             const phone = voter.phone || voter.phoneNumber || voter.mobile || '';
-            const island = voter.island || voter.constituency || '';
+            const constituency = voter.constituency || '';
+            const island = voter.island || '';
             const address = (voter.address || '').replace(/"/g, '&quot;');
             // Get permanent address separately
             const permanentAddress = (voter.permanentAddress || '').replace(/"/g, '&quot;');
@@ -549,13 +559,14 @@ async function setupVoterSearch() {
                      data-voter-name="${name.replace(/"/g, '&quot;')}" 
                      data-voter-idnumber="${idNumber}" 
                      data-voter-phone="${phone}" 
-                     data-voter-island="${island}" 
+                     data-voter-constituency="${constituency.replace(/"/g, '&quot;')}" 
+                     data-voter-island="${island.replace(/"/g, '&quot;')}" 
                      data-voter-address="${address}" 
                      data-voter-permanent-address="${permanentAddress}"
                      style="padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border-light); transition: background 0.2s;">
                     <div style="font-weight: 600; color: var(--text-color); margin-bottom: 4px;">${name}</div>
                     <div style="font-size: 12px; color: var(--text-light);">
-                        ID: ${idNumber}${phone ? ` • Phone: ${phone}` : ''}${island ? ` • ${island}` : ''}
+                        ID: ${idNumber}${phone ? ` • Phone: ${phone}` : ''}${constituency ? ` • ${constituency}` : ''}${island ? ` • ${island}` : ''}
                     </div>
                     ${permanentAddress ? `<div style="font-size: 11px; color: var(--text-light); margin-top: 4px; font-style: italic;">Address: ${permanentAddress}</div>` : ''}
                 </div>
@@ -569,6 +580,7 @@ async function setupVoterSearch() {
                 const voterName = option.dataset.voterName;
                 const voterIdNumber = option.dataset.voterIdnumber;
                 const voterPhone = option.dataset.voterPhone || '';
+                const voterConstituency = option.dataset.voterConstituency || '';
                 const voterIsland = option.dataset.voterIsland || '';
                 const voterAddress = option.dataset.voterAddress || '';
                 const voterPermanentAddress = option.dataset.voterPermanentAddress || '';
@@ -577,6 +589,7 @@ async function setupVoterSearch() {
                 const currentVoterInput = document.getElementById('call-voter-name');
                 const currentVoterIdInput = document.getElementById('call-voter-id');
                 const currentVoterPhoneInput = document.getElementById('call-voter-phone');
+                const currentVoterConstituencyInput = document.getElementById('call-voter-constituency');
                 const currentVoterIslandInput = document.getElementById('call-voter-island');
                 const currentVoterAddressInput = document.getElementById('call-voter-address');
                 const currentVoterIdHidden = document.getElementById('call-voter-id-hidden');
@@ -591,6 +604,7 @@ async function setupVoterSearch() {
 
                 if (currentVoterIdInput) currentVoterIdInput.value = voterIdNumber;
                 if (currentVoterPhoneInput) currentVoterPhoneInput.value = voterPhone;
+                if (currentVoterConstituencyInput) currentVoterConstituencyInput.value = voterConstituency;
                 if (currentVoterIslandInput) currentVoterIslandInput.value = voterIsland;
                 if (currentVoterAddressInput) {
                     // Show permanent address if available, otherwise show regular address
@@ -821,7 +835,8 @@ async function loadVotersForCall() {
                 voterId: data.voterId || data.idNumber || '',
                 idNumber: data.idNumber || data.voterId || '',
                 phone: data.phone || data.phoneNumber || data.mobile || data.contact || data.number || '',
-                island: data.island || data.constituency || '',
+                constituency: data.constituency || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : '') || '',
+                island: data.island || '',
                 address: data.address || data.location || '',
                 permanentAddress: data.permanentAddress || data.address || data.location || '',
                 // Include email fields for debugging
@@ -898,6 +913,7 @@ async function handleCallSubmission(e) {
     const voterId = formData.get('call-voter-id');
     const voterDocumentId = formData.get('call-voter-id-hidden');
     const voterPhone = formData.get('call-voter-phone');
+    const voterConstituency = formData.get('call-voter-constituency');
     const voterIsland = formData.get('call-voter-island');
     const voterAddress = formData.get('call-voter-address');
 
@@ -924,6 +940,7 @@ async function handleCallSubmission(e) {
             voterId: voterId || '',
             voterDocumentId: voterDocumentId || '',
             phone: voterPhone || '',
+            constituency: voterConstituency || ((window.campaignData && window.campaignData.constituency) ? window.campaignData.constituency : ''),
             island: voterIsland || '',
             address: voterAddress || '',
             caller: callerName.trim(),

@@ -1,19 +1,21 @@
 // Agent Portal JavaScript
 // Handles agent authentication, voter management, and agent-specific actions
 
-// Firebase Configuration (same as app.js)
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-    apiKey: "AIzaSyApT0uj8sz3mC8bDtLQeHHodAtZlqfJDns",
-    authDomain: "rajjecampaign.firebaseapp.com",
-    projectId: "rajjecampaign",
-    storageBucket: "rajjecampaign.firebasestorage.app",
-    messagingSenderId: "480799282234",
-    appId: "1:480799282234:web:a35c084610bcdfc2ed9103",
-    measurementId: "G-2K7J967N1V"
+  apiKey: "AIzaSyBKrq8w4A05FCWb2pdGZ_sGZi5wEqdMmxM",
+  authDomain: "myapp-5-8bc43.firebaseapp.com",
+  projectId: "myapp-5-8bc43",
+  storageBucket: "myapp-5-8bc43.firebasestorage.app",
+  messagingSenderId: "1096643150430",
+  appId: "1:1096643150430:web:0295ed5bae989263266acf",
+  measurementId: "G-XBPRHN715Z"
 };
 
 import {
-    initializeApp
+    initializeApp,
+    getApps,
+    getApp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import {
     getAuth,
@@ -34,10 +36,10 @@ import {
     onSnapshot
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth();
-const db = getFirestore();
+// Initialize Firebase (check if already initialized)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 // Global variables
 let currentAgentData = null;
@@ -450,6 +452,7 @@ async function loadAssignedVotersSection() {
                             <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">Image</th>
                             <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">ID Number</th>
                             <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">Name</th>
+                            <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">Constituency</th>
                             <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">Island</th>
                             <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">Phone</th>
                             <th style="padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-light); letter-spacing: 0.5px;">Pledge Status</th>
@@ -490,6 +493,7 @@ async function loadAssignedVotersSection() {
                     </td>
                     <td style="padding: 14px 16px; font-size: 13px; color: var(--text-color); font-weight: 500;">${voter.idNumber || voter.voterId || 'N/A'}</td>
                     <td style="padding: 14px 16px; font-size: 13px; color: var(--text-color); font-weight: 600;">${voter.name || 'N/A'}</td>
+                    <td style="padding: 14px 16px; font-size: 13px; color: var(--text-color);">${voter.constituency || 'N/A'}</td>
                     <td style="padding: 14px 16px; font-size: 13px; color: var(--text-color);">${voter.island || 'N/A'}</td>
                     <td style="padding: 14px 16px; font-size: 13px; color: var(--text-color);">${voter.number || voter.phone || 'N/A'}</td>
                     <td style="padding: 14px 16px;">${pledgeStatusHtml}</td>
@@ -1253,6 +1257,8 @@ async function saveAgentCall(voterId) {
             voterName: voterData.name || 'N/A',
             voterId: voterData.idNumber || voterData.voterId || voterId,
             voterDocumentId: voterId,
+            constituency: voterData.constituency || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : '') || '',
+            island: voterData.island || '',
             callDate: new Date(formData.get('call-date')),
             status: formData.get('call-status'),
             notes: formData.get('call-notes') || '',

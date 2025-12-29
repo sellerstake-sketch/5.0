@@ -250,23 +250,17 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="atoll">Atoll</label>
-                            <select id="atoll" required>
-                                <option value="">Select Atoll</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="constituency">Constituency</label>
+                            <label for="constituency">Constituency <span style="color: red;">*</span></label>
                             <select id="constituency" required>
                                 <option value="">Select Constituency</option>
                             </select>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="island">Island</label>
-                        <select id="island" required>
-                            <option value="">Select Island</option>
-                        </select>
+                        <div class="form-group">
+                            <label for="island">Island <span style="color: red;">*</span></label>
+                            <select id="island" required>
+                                <option value="">Select Island</option>
+                            </select>
+                        </div>
                     </div>
                     <div id="campaign-error" class="error-message"></div>
                     <button type="submit" class="btn-primary">Complete Setup</button>
@@ -625,8 +619,26 @@
                 <header class="main-header">
                     <div class="header-left">
                         <button class="menu-toggle" id="menu-toggle"><span class="svg-icon" data-icon="menu"></span></button>
-                        <nav class="breadcrumb" id="breadcrumb">
-                            <a href="#" class="breadcrumb-item" id="breadcrumb-home">Home</a>
+                        <!-- Location Dropdown -->
+                        <div class="location-display-wrapper" id="location-display-wrapper" style="margin-left: 12px; position: relative;">
+                            <div class="location-display-container" id="location-display-container" style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f5f7fa; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; transition: all 0.2s ease; min-width: 140px;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #6b7280; flex-shrink: 0;">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                    <circle cx="12" cy="10" r="3"></circle>
+                                </svg>
+                                <span class="location-values" id="location-values" style="font-size: 11px; color: #374151; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">•</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #9ca3af; flex-shrink: 0; transition: transform 0.3s ease;" id="location-chevron">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </div>
+                            <div class="location-dropdown" id="location-dropdown" style="display: none; position: absolute; top: calc(100% + 8px); left: 0; background: white; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 200px; max-width: 300px; max-height: 400px; overflow-y: auto;">
+                                <div id="location-dropdown-content" style="padding: 8px;">
+                                    <!-- Content will be populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                        <nav class="breadcrumb" id="breadcrumb" style="margin-left: 16px;">
+                            <!-- Breadcrumb will be populated dynamically -->
                         </nav>
                     </div>
                     <div class="header-right">
@@ -836,6 +848,8 @@
 
     <!-- Dialog System (must load first) -->
     <script src="dialog.js"></script>
+    <!-- Global Filter System (must load early) -->
+    <script src="global-filter.js"></script>
     <!-- Icons -->
     <script src="icons.js"></script>
     <!-- Pages -->

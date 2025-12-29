@@ -1,17 +1,19 @@
-// Firebase Configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-    apiKey: "AIzaSyApT0uj8sz3mC8bDtLQeHHodAtZlqfJDns",
-    authDomain: "rajjecampaign.firebaseapp.com",
-    projectId: "rajjecampaign",
-    storageBucket: "rajjecampaign.firebasestorage.app",
-    messagingSenderId: "480799282234",
-    appId: "1:480799282234:web:a35c084610bcdfc2ed9103",
-    measurementId: "G-2K7J967N1V"
+  apiKey: "AIzaSyBKrq8w4A05FCWb2pdGZ_sGZi5wEqdMmxM",
+  authDomain: "myapp-5-8bc43.firebaseapp.com",
+  projectId: "myapp-5-8bc43",
+  storageBucket: "myapp-5-8bc43.firebasestorage.app",
+  messagingSenderId: "1096643150430",
+  appId: "1:1096643150430:web:0295ed5bae989263266acf",
+  measurementId: "G-XBPRHN715Z"
 };
 
 // Firebase Imports
 import {
-    initializeApp
+    initializeApp,
+    getApps,
+    getApp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
     getAuth,
@@ -45,8 +47,8 @@ import {
     getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase (check if already initialized)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 
 // Set authentication persistence to LOCAL (persists across browser sessions)
@@ -197,7 +199,138 @@ export {
     auth
 };
 
-// Maldives Data
+// Constituency-Island Mapping (Dhaaira structure) - Complete list from provided data
+// Format: "CODE CONSTITUENCY NAME": [array of islands]
+const constituencyIslandData = {
+    "A01 Hoarafushi Dhaaira": ["Hoarafushi", "Thuraakunu", "Uligan"],
+    "A02 Ihavandhoo Dhaaira": ["Ihavandhoo", "Maarandhoo", "Molhadhoo"],
+    "A03 Baarashu Dhaairaa": ["Baarah", "Muraidhoo", "Thakandhoo", "Utheemu"],
+    "A04 Dhidhoo Dhaaira": ["Dhidhdhoo"],
+    "A05 Kelaa Dhaaira": ["Filladhoo", "Kelaa", "Vashafaru"],
+    "B01 Hanimaadhoo Dhaaira": ["Finey", "Hanimaadhoo", "Hirimaradhoo", "Naivaadhoo"],
+    "B02 Nolhivaram Dhaaira": ["Kunburudhoo", "Maavaidhoo", "Nolhivaran", "Nolhivaranfaru"],
+    "B03 Vaikaradhoo Dhaaira": ["Kurinbi", "Nellaidhoo", "Vaikaradhoo"],
+    "B04 Kulhudhuffushi Uthuru Dhaaira": ["Kulhudhuffushi"],
+    "B05 Kulhudhuffushi Dhekunu Dhaaira": ["Kulhudhuffushi"],
+    "B06 Makunudhoo Dhaaira": ["Kumundhoo", "Makunudhoo", "Neykurendhoo"],
+    "C01 Kanditheemu Dhaaira": ["Bilehfahi", "Feydhoo", "Goidhoo", "Kanditheemu", "Noomaraa"],
+    "C02 Milandhoo Dhaaira": ["Feevah", "Milandhoo", "Narudhoo"],
+    "C03 Komandoo Dhaaira": ["Foakaidhoo", "Komandoo", "Maroshi"],
+    "C04 Funadhoo Dhaaira": ["Funadhoo", "Lhaimagu", "Maaungoodhoo"],
+    "D01 Kendhikulhudhoo Dhaaira": ["Henbadhoo", "Kendhikulhudhoo", "Kudafari", "Maalhendhoo"],
+    "D02 Manadhoo Dhaaira": ["Landhoo", "Maafaru", "Manadhoo"],
+    "D03 Velidhoo Dhaaira": ["Fodhdhoo", "Lhohi", "Velidhoo"],
+    "D04 Holhudhoo Dhaaira": ["Holhudhoo", "Magoodhoo", "Miladhoo"],
+    "E01 Alifushi Dhaaira": ["Alifushi", "Angolhitheemu", "Rasgetheemu", "Vaadhoo"],
+    "E02 Ungoofaaru Dhaaira": ["Hulhudhuffaaru", "Maakurathu", "Ungoofaaru"],
+    "E03 Dhuvaafaru Dhaairaa": ["Dhuvaafaru"],
+    "E04 Inguraidhoo Dhaaira": ["Fainu", "Inguraidhoo", "Innamaadhoo", "Kinolhas", "Rasmaadhoo"],
+    "E05 Maduvvari Dhaaira": ["Maduvvari", "Meedhoo"],
+    "F01 Thulhaadhoo Dhaaira": ["Fehendhoo", "Fulhadhoo", "Thulhaadhoo"],
+    "F02 Eydhafushi Dhaaira": ["Eydhafushi", "Hithaadhoo", "Maalhos"],
+    "F03 Kendhoo Dhaaira": ["Dharavandhoo", "Dhonfan", "Kamadhoo", "Kendhoo", "Kihaadhoo", "Kudarikilu"],
+    "F04 Hithaadhoo Dhaaira": ["Hithaadhoo"],
+    "G01 Hinnavaru Dhaaira": ["Hinnavaru"],
+    "G02 Naifaru Dhaairaa": ["Naifaru"],
+    "G03 Kurendhoo Dhaaira": ["Kurendhoo", "Olhuvelifushi"],
+    "H01 Kaashidhoo Dhaaira": ["Gaafaru", "Kaashidhoo"],
+    "H02 Thulusdhoo Dhaaira": ["Dhiffushi", "Hinmafushi", "Huraa", "Thulusdhoo"],
+    "H03 Maafushi Dhaaira": ["Gulhi", "Guraidhoo", "Maafushi"],
+    "H04 Huraa Dhaaira": ["Huraa"],
+    "I01 Maamigili Dhaaira": ["Fenfushi", "Maamigili"],
+    "I02 Mahibadhoo Dhaaira": ["Hangnaameedhoo", "Mahibadhoo"],
+    "I03 Dhangethi Dhaaira": ["Dhangethi", "Dhigurah", "Mandhoo", "Omadhoo"],
+    "J01 Felidhoo Dhaaira": ["Felidhoo", "Fulidhoo", "Thinadhoo"],
+    "J02 Keyodhoo Dhaaira": ["Keyodhoo", "Rakeedhoo"],
+    "K01 Dhiggaru Dhaaira": ["Dhiggaru", "Muli", "Raiymandhoo", "Veyvah"],
+    "K02 Mulaku Dhaaira": ["Kolhufushi", "Mulah", "Naalaafushi"],
+    "L01 Bileydhoo Dhaaira": ["Bilehdhoo", "Feeali"],
+    "L02 Nilandhoo Dhaaira": ["Dharanboodhoo", "Nilandhoo"],
+    "M01 Meedhoo Dhaaira": ["Meedhoo", "Bandidhoo", "Hulhudheli", "Rinbudhoo"],
+    "M02 Kudahuvadhoo Dhaaira": ["Kudahuvadhoo", "Maaenboodhoo", "Vaani"],
+    "N01 Vilufushi Dhaaira": ["Buruni", "Madifushi", "Vilufushi"],
+    "N02 Thimarafushi Dhaaira": ["Thimarafushi", "Veymandoo"],
+    "N03 Kinbidhoo Dhaaira": ["Hirilandhoo", "Kandoodhoo", "Kinbidhoo", "Vandhoo"],
+    "N04 Guraidhoo Dhaairaa": ["Guraidhoo"],
+    "O01 Isdhoo Dhaaira": ["Dhanbidhoo", "Isdhoo", "Kalaidhoo", "Maabaidhoo"],
+    "O02 Gamu Dhaaira": ["Gan", "Mundoo"],
+    "O03 Fonadhoo Dhaaira": ["Fonadhoo", "Gaadhoo", "Maamendhoo"],
+    "O04 Maavashu Dhaaira": ["Hithadhoo", "Kunahandhoo", "Maavah"],
+    "P01 Vilingili Dhaaira": ["Kolamaafushi", "Vilingili"],
+    "P02 Dhandhoo Dhaaira": ["Dhaandhoo"],
+    "P03 Gemanafushi Dhaaira": ["Dhevvadhoo", "Dhiyadhoo", "Gemanafushi", "Kanduhulhudhoo", "Kondey"],
+    "P04 Kolamaafushi Dhaaira": ["Kolamaafushi"],
+    "Q01 Thinadhoo Uthuru Dhaairaa": ["Thinadhoo"],
+    "Q02 Thinadhoo Dhekunu Dhaairaa": ["Thinadhoo"],
+    "Q03 Madaveli Dhaaira": ["Hoandedhdhoo", "Madaveli", "Nadellaa"],
+    "Q04 Faresmaathodaa Dhaaira": ["Faresmaathodaa", "Fiyoaree", "Rathafandhoo"],
+    "Q05 Gadhdhoo Dhaaira": ["Gadhdhoo"],
+    "R01 Fuvahmulaku Uthuru Dhaairaa": ["Fuvahmulah"],
+    "R02 Fuvahmulaku Medhu Dhaaira": ["Fuvahmulah"],
+    "R03 Fuvahmulaku Dhekunu Dhaairaa": ["Fuvahmulah"],
+    "S01 Hulhudhoo Dhaairaa": ["Hulhudhoo"],
+    "S02 Feydhoo Dhekunu Dhaairaa": ["Feydhoo"],
+    "S03 Maradhoo Dhaaira": ["Maradhoo"],
+    "S04 Hithadhoo Uthuru Dhaairaa": ["Hithadhoo"],
+    "S05 Hithadhoo Medhu Dhaaira": ["Hithadhoo"],
+    "S06 Hithadhoo Dhekunu Dhaaira": ["Hithadhoo"],
+    "S07 Addu Meedhoo Dhaaira": ["Addu Meedhoo"],
+    "S08 Feydhoo Uthuru Dhaairaa": ["Feydhoo"],
+    "T01 Hulhumale Dhekunu Dhaaira": ["Hulhumale"],
+    "T02 Medhu Henveyru Dhaaira": ["Malé"],
+    "T03 Henveyru Dhekunu Dhaaira": ["Malé"],
+    "T04 Henveyru Uthuru Dhaaira": ["Malé"],
+    "T05 Galolhu Uthuru Dhaaira": ["Malé"],
+    "T06 Galolhu Dhekunu Dhaaira": ["Malé"],
+    "T07 Mahchangoalhee Uthuru Dhaaira": ["Malé"],
+    "T08 Mahchangoalhee Dhekunu Dhaaira": ["Malé"],
+    "T09 Maafannu Uthuru Dhaaira": ["Malé"],
+    "T10 Maafannu Hulhangu Dhaaira": ["Malé"],
+    "T11 Maafannu Medhu Dhaaira": ["Malé"],
+    "T12 Maafannu Dhekunu Dhaaira": ["Malé"],
+    "T13 Villimale Dhaaira": ["Villimale"],
+    "T14 Henveyru Hulhangu Dhaaira": ["Malé"],
+    "T15 Mahchangoalhee Medhu Dhaaira": ["Malé"],
+    "T16 Hulhumaale Medhu Dhaaira": ["Hulhumale"],
+    "T17 Hulhumaale Uthuru Dhaaira": ["Hulhumale"],
+    "U01 Mathiveri Dhaaira": ["Bodufolhudhoo", "Feridhoo", "Himandhoo", "Mathiveri"],
+    "U02 Thoddoo Dhaaira": ["Rasdhoo", "Thoddoo", "Ukulhas"]
+};
+
+// Get all constituencies (all unique codes, no deduplication needed as each code is unique)
+function getAllConstituencies() {
+    const constituencies = Object.keys(constituencyIslandData);
+    
+    // Sort by code (alphanumeric)
+    return constituencies.sort((a, b) => {
+        const codeA = a.match(/^([A-Z0-9]+)/)?.[1] || '';
+        const codeB = b.match(/^([A-Z0-9]+)/)?.[1] || '';
+        if (codeA !== codeB) {
+            // Compare codes alphabetically/numerically
+            return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        return a.localeCompare(b);
+    });
+}
+
+// Get islands for a specific constituency
+function getIslandsForConstituency(constituency) {
+    if (!constituency) return [];
+    return constituencyIslandData[constituency] || [];
+}
+
+// Get constituency for a specific island
+function getConstituencyForIsland(island) {
+    if (!island) return null;
+    for (const [constituency, islands] of Object.entries(constituencyIslandData)) {
+        if (islands.includes(island)) {
+            return constituency;
+        }
+    }
+    return null;
+}
+
+// Maldives Data (keeping for backward compatibility where needed)
 const maldivesData = {
     atolls: [{
             name: "Haa Alifu",
@@ -437,6 +570,10 @@ window.campaignData = campaignData;
 window.db = db;
 window.auth = auth;
 window.maldivesData = maldivesData;
+window.constituencyIslandData = constituencyIslandData;
+window.getAllConstituencies = getAllConstituencies;
+window.getIslandsForConstituency = getIslandsForConstituency;
+window.getConstituencyForIsland = getConstituencyForIsland;
 
 // Utility Functions
 function showScreen(screenId) {
@@ -1373,28 +1510,48 @@ function populateConstituencies() {
         console.warn('Constituency select element not found, skipping population');
         return;
     }
-    if (!maldivesData || !maldivesData.constituencies || !Array.isArray(maldivesData.constituencies)) {
-        console.warn('Maldives data or constituencies array not available, skipping population');
-        return;
+    
+    // Clear existing options except the first one
+    const firstOption = constituencySelect.querySelector('option[value=""]');
+    constituencySelect.innerHTML = '';
+    if (firstOption) {
+        constituencySelect.appendChild(firstOption);
+    } else {
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select Constituency';
+        constituencySelect.appendChild(defaultOption);
     }
-    maldivesData.constituencies.forEach(constituency => {
+    
+    // Get unique constituencies
+    const constituencies = getAllConstituencies();
+    constituencies.forEach(constituency => {
         const option = document.createElement('option');
         option.value = constituency;
         option.textContent = constituency;
         constituencySelect.appendChild(option);
     });
+    
+    // Add event listener to populate islands when constituency changes
+    constituencySelect.addEventListener('change', function() {
+        const selectedConstituency = this.value;
+        populateIslands(selectedConstituency);
+    });
 }
 
-function populateIslands(atollName) {
+function populateIslands(constituency) {
     const islandSelect = document.getElementById('island');
     if (!islandSelect) {
         console.warn('Island select element not found, skipping population');
         return;
     }
+    
+    // Clear existing options
     islandSelect.innerHTML = '<option value="">Select Island</option>';
 
-    if (atollName && maldivesData && maldivesData.islands && maldivesData.islands[atollName]) {
-        maldivesData.islands[atollName].forEach(island => {
+    if (constituency && constituencyIslandData[constituency]) {
+        const islands = getIslandsForConstituency(constituency);
+        islands.forEach(island => {
             const option = document.createElement('option');
             option.value = island;
             option.textContent = island;
@@ -1406,15 +1563,14 @@ function populateIslands(atollName) {
 // Initialize when DOM is ready
 function initializeApplicationData() {
     // Initialize Data
-    populateAtolls();
     populateConstituencies();
 
-    // Event Listeners for Island Selection
-    const atollSelect = document.getElementById('atoll');
-    if (atollSelect) {
-        atollSelect.addEventListener('change', function() {
-            populateIslands(this.value);
-        });
+    // Event Listeners for Island Selection (handled in populateConstituencies function)
+    // Constituency change listener is set up in populateConstituencies()
+    
+    // Initialize header filters if available (main application)
+    if (typeof window.initializeHeaderFilters === 'function') {
+        window.initializeHeaderFilters();
     }
 
     // Logo Preview
@@ -1957,14 +2113,22 @@ function initializeEventListeners() {
 
             const campaignType = document.getElementById('campaign-type').value;
             const campaignName = document.getElementById('campaign-name').value;
-            const atoll = document.getElementById('atoll').value;
             const constituency = document.getElementById('constituency').value;
             const island = document.getElementById('island').value;
 
             // Validate required fields first (before showing loading)
-            if (!campaignType || !campaignName || !atoll || !constituency || !island) {
-                showError('campaign-error', 'Please fill in all required fields', false);
+            if (!campaignType || !campaignName || !constituency || !island) {
+                showError('campaign-error', 'Please fill in all required fields (Campaign Type, Name, Constituency, and Island)', false);
                 return;
+            }
+            
+            // Validate island belongs to selected constituency
+            if (window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+                const constituencyIslands = window.getIslandsForConstituency(constituency);
+                if (!constituencyIslands.includes(island)) {
+                    showError('campaign-error', `Selected island "${island}" does not belong to constituency "${constituency}". Please select a valid island.`, false);
+                    return;
+                }
             }
 
             try {
@@ -1988,7 +2152,6 @@ function initializeEventListeners() {
                 console.log('[campaign-setup-form] Campaign data:', {
                     type: campaignType,
                     name: campaignName,
-                    atoll,
                     constituency,
                     island
                 });
@@ -2017,7 +2180,6 @@ function initializeEventListeners() {
                     campaignType,
                     campaignName,
                     campaignLogo: logoURL,
-                    atoll,
                     constituency,
                     island,
                     email: userEmail,
@@ -2051,7 +2213,6 @@ function initializeEventListeners() {
                         campaignType,
                         campaignName,
                         campaignLogo: logoURL,
-                        atoll,
                         constituency,
                         island,
                         campaignSet: true,
@@ -2157,6 +2318,18 @@ async function loadWorkspace(data) {
                     setTimeout(() => initializeProfileDropdown(), 300);
                 }
             }
+            // Initialize location display
+            if (typeof window.initializeLocationDisplay === 'function') {
+                const locationInitialized = window.initializeLocationDisplay();
+                if (!locationInitialized) {
+                    // Retry if initialization failed (elements might not be ready yet)
+                    setTimeout(() => {
+                        if (typeof window.initializeLocationDisplay === 'function') {
+                            window.initializeLocationDisplay();
+                        }
+                    }, 300);
+                }
+            }
         }, 100);
 
         // Setup notification handlers when workspace is shown (elements should exist now)
@@ -2185,7 +2358,7 @@ async function loadWorkspace(data) {
                 campaignNameEl.textContent = data.campaignName || 'Campaign Name';
             }
             if (islandNameEl) {
-                islandNameEl.textContent = data.island || 'Island';
+                islandNameEl.textContent = data.constituency || 'Constituency';
             }
             if (data.campaignLogo && logoEl) {
                 // Check if it's a data URL (SVG) or regular URL
@@ -2338,24 +2511,378 @@ async function loadWorkspace(data) {
     }
 }
 
-// Update breadcrumb function - Only show Home button
+// Creative Location Display in Header
+function initializeLocationDisplay() {
+    const locationDropdown = document.getElementById('location-dropdown');
+    const locationDropdownContent = document.getElementById('location-dropdown-content');
+    const locationDisplayWrapper = document.getElementById('location-display-wrapper');
+    const locationContainer = document.getElementById('location-display-container');
+
+    if (!locationDropdown || !locationDropdownContent || !locationContainer) {
+        console.log('[initializeLocationDisplay] Elements not found, skipping initialization');
+        return false;
+    }
+
+    function populateDropdown() {
+        // Get campaign constituency from campaignData
+        const campaignConstituency = (window.campaignData && window.campaignData.constituency) ? window.campaignData.constituency : '';
+        
+        if (!campaignConstituency) {
+            locationDropdownContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #6b7280; font-size: 12px;">No constituency set</div>';
+            return;
+        }
+
+        // Get current filter state
+        const filterState = window.GlobalFilter ? window.GlobalFilter.getState() : { type: null, value: null };
+        const isConstituencySelected = filterState.type === 'constituency' && filterState.value === campaignConstituency;
+        const selectedIsland = filterState.type === 'island' ? filterState.value : null;
+
+        // Get islands for this constituency only
+        const constituencyIslands = getIslandsForConstituency(campaignConstituency);
+        const sortedIslands = constituencyIslands ? [...constituencyIslands].sort() : [];
+
+        let dropdownHTML = '';
+
+        // Clear filter option
+        dropdownHTML += `
+            <div class="filter-option" data-filter-type="clear" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                <div style="font-size: 11px; color: ${filterState.type === null ? '#6fc1da' : '#6b7280'}; font-weight: ${filterState.type === null ? '600' : '500'}; display: flex; align-items: center; gap: 6px;">
+                    ${filterState.type === null ? '<span style="color: #6fc1da;">●</span>' : ''}
+                    <span>Show All</span>
+                </div>
+            </div>
+        `;
+
+        // Constituency item (clickable)
+        dropdownHTML += `
+            <div class="filter-option" data-filter-type="constituency" data-filter-value="${campaignConstituency.replace(/"/g, '&quot;')}" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 4px;">Constituency</div>
+                <div style="font-size: 12px; color: ${isConstituencySelected ? '#6fc1da' : '#374151'}; font-weight: ${isConstituencySelected ? '600' : '500'}; display: flex; align-items: center; gap: 6px;">
+                    ${isConstituencySelected ? '<span style="color: #6fc1da;">●</span>' : ''}
+                    <span>${campaignConstituency}</span>
+                </div>
+            </div>
+        `;
+
+        // Islands section
+        if (sortedIslands.length > 0) {
+            dropdownHTML += `
+                <div style="padding: 8px 12px;">
+                    <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 6px;">Islands (${sortedIslands.length})</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+            `;
+
+            sortedIslands.forEach(island => {
+                const isSelected = selectedIsland === island;
+                dropdownHTML += `
+                    <div class="filter-option" data-filter-type="island" data-filter-value="${island.replace(/"/g, '&quot;')}" style="padding: 6px 8px; font-size: 12px; color: ${isSelected ? '#6fc1da' : '#374151'}; font-weight: ${isSelected ? '600' : '500'}; border-radius: 4px; cursor: pointer; transition: background 0.2s; display: flex; align-items: center; gap: 6px;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                        ${isSelected ? '<span style="color: #6fc1da;">●</span>' : ''}
+                        <span>${island}</span>
+                    </div>
+                `;
+            });
+
+            dropdownHTML += '</div></div>';
+        } else {
+            dropdownHTML += `
+                <div style="padding: 12px; text-align: center; color: #6b7280; font-size: 12px;">
+                    No islands found
+                </div>
+            `;
+        }
+
+        locationDropdownContent.innerHTML = dropdownHTML;
+
+        // Attach click handlers to filter options
+        locationDropdownContent.querySelectorAll('.filter-option').forEach(option => {
+            option.addEventListener('click', function() {
+                const filterType = this.getAttribute('data-filter-type');
+                const filterValue = this.getAttribute('data-filter-value');
+
+                if (filterType === 'clear') {
+                    if (window.GlobalFilter) {
+                        window.GlobalFilter.clearFilter();
+                    }
+                } else if (filterType && filterValue && window.GlobalFilter) {
+                    window.GlobalFilter.setFilter(filterType, filterValue);
+                }
+
+                // Close dropdown
+                locationDropdown.style.display = 'none';
+                const chevron = document.getElementById('location-chevron');
+                if (chevron) {
+                    chevron.style.transform = 'rotate(0deg)';
+                }
+            });
+        });
+    }
+
+    // Update header display
+    function updateLocationDisplay() {
+        const locationValues = document.getElementById('location-values');
+        const filterState = window.GlobalFilter ? window.GlobalFilter.getState() : { type: null, value: null };
+
+        if (locationValues) {
+            if (filterState.type === 'constituency' && filterState.value) {
+                const constituencyIslands = getIslandsForConstituency(filterState.value);
+                const islandCount = constituencyIslands ? constituencyIslands.length : 0;
+                locationValues.textContent = `${filterState.value} • ${islandCount}`;
+                locationValues.style.color = '#6fc1da';
+                locationValues.style.fontWeight = '600';
+            } else if (filterState.type === 'island' && filterState.value) {
+                locationValues.textContent = filterState.value;
+                locationValues.style.color = '#6fc1da';
+                locationValues.style.fontWeight = '600';
+            } else {
+                const campaignConstituency = (window.campaignData && window.campaignData.constituency) ? window.campaignData.constituency : '';
+                if (campaignConstituency) {
+                    const constituencyIslands = getIslandsForConstituency(campaignConstituency);
+                    if (constituencyIslands && constituencyIslands.length > 0) {
+                        locationValues.textContent = `${campaignConstituency} • ${constituencyIslands.length}`;
+                    } else {
+                        locationValues.textContent = campaignConstituency;
+                    }
+                } else {
+                    locationValues.textContent = 'Select';
+                }
+                locationValues.style.color = '#374151';
+                locationValues.style.fontWeight = '500';
+            }
+        }
+    }
+
+    // Subscribe to global filter changes
+    if (window.GlobalFilter) {
+        window.GlobalFilter.subscribe(function(newState, previousState) {
+            updateLocationDisplay();
+            populateDropdown();
+            
+            // Trigger data refresh across all pages
+            refreshAllData();
+        });
+    }
+
+    // Toggle dropdown function
+    function toggleDropdown() {
+        const isOpen = locationDropdown.style.display !== 'none';
+        locationDropdown.style.display = isOpen ? 'none' : 'block';
+        const chevron = document.getElementById('location-chevron');
+        if (chevron) {
+            chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+        if (!isOpen) {
+            populateDropdown();
+        }
+    }
+
+    // Click handler on container
+    locationContainer.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleDropdown();
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (locationDisplayWrapper && 
+            !locationDisplayWrapper.contains(e.target)) {
+            locationDropdown.style.display = 'none';
+            const chevron = document.getElementById('location-chevron');
+            if (chevron) {
+                chevron.style.transform = 'rotate(0deg)';
+            }
+        }
+    });
+
+    // Function to refresh all data when filter changes
+    function refreshAllData() {
+        console.log('[GlobalFilter] Refreshing all data after filter change...');
+        
+        // First, try to re-render cached data immediately for instant feedback
+        // Use requestAnimationFrame for smooth instant update
+        requestAnimationFrame(() => {
+            // Immediately re-render cached data with new filter (instant update)
+            if (typeof window.renderCachedVotersData === 'function') {
+                try {
+                    window.renderCachedVotersData();
+                } catch (error) {
+                    console.warn('[GlobalFilter] Error rendering cached voters data:', error);
+                }
+            }
+            if (typeof window.renderCachedCallsData === 'function') {
+                try {
+                    window.renderCachedCallsData();
+                } catch (error) {
+                    console.warn('[GlobalFilter] Error rendering cached calls data:', error);
+                }
+            }
+            if (typeof window.renderCachedPledgesData === 'function') {
+                try {
+                    window.renderCachedPledgesData();
+                } catch (error) {
+                    console.warn('[GlobalFilter] Error rendering cached pledges data:', error);
+                }
+            }
+            if (typeof window.renderCachedCandidatesData === 'function') {
+                try {
+                    window.renderCachedCandidatesData();
+                } catch (error) {
+                    console.warn('[GlobalFilter] Error rendering cached candidates data:', error);
+                }
+            }
+            if (typeof window.renderCachedEventsData === 'function') {
+                try {
+                    window.renderCachedEventsData();
+                } catch (error) {
+                    console.warn('[GlobalFilter] Error rendering cached events data:', error);
+                }
+            }
+            if (typeof window.renderCachedAgentsData === 'function') {
+                try {
+                    window.renderCachedAgentsData();
+                } catch (error) {
+                    console.warn('[GlobalFilter] Error rendering cached agents data:', error);
+                }
+            }
+        });
+        
+        // Refresh analytics if analytics page is visible
+        setTimeout(() => {
+            const currentSection = window.currentSection || '';
+            if (currentSection === 'analytics' && typeof window.loadAnalyticsData === 'function') {
+                console.log('[GlobalFilter] Refreshing analytics data...');
+                window.loadAnalyticsData();
+            }
+        }, 100);
+        
+        // Clear all caches to force fresh data load in background
+        if (typeof window.clearCache === 'function') {
+            window.clearCache('voters');
+            window.clearCache('calls');
+            window.clearCache('pledges');
+            window.clearCache('events');
+            window.clearCache('candidates');
+            window.clearCache('agents');
+            window.clearCache('activities');
+        } else if (typeof clearAllCaches === 'function') {
+            clearAllCaches();
+        }
+        
+        // Clear voter data cache if it exists
+        if (window.voterDataCache) {
+            // Don't clear data, just mark as needing refresh so cached render works
+            // window.voterDataCache.data = null;
+            // window.voterDataCache.timestamp = null;
+        }
+        
+        // Immediately refresh data for the current page, then refresh others
+        // This ensures instant updates when filter changes
+        const currentSection = window.currentSection ? (typeof window.currentSection === 'function' ? window.currentSection() : window.currentSection) : null;
+        
+        // Also check if table elements exist as fallback
+        const isVotersPage = currentSection === 'voters' || document.getElementById('voters-table-body') !== null;
+        const isCallsPage = currentSection === 'calls' || document.getElementById('calls-table-body') !== null;
+        const isPledgesPage = currentSection === 'pledges' || document.getElementById('pledges-table-body') !== null;
+        const isEventsPage = currentSection === 'events' || document.getElementById('events-table-body') !== null;
+        const isCandidatesPage = currentSection === 'candidates' || document.getElementById('candidates-table-body') !== null;
+        const isAgentsPage = currentSection === 'agents' || document.getElementById('agents-table-body') !== null;
+        const isAnalyticsPage = currentSection === 'analytics' || document.getElementById('analytics-stats-section') !== null;
+        
+        // Immediately refresh the currently visible section
+        if (isVotersPage && typeof loadVotersData === 'function') {
+            loadVotersData(true);
+        } else if (isCallsPage && typeof loadCallsData === 'function') {
+            loadCallsData(true);
+        } else if (isPledgesPage && typeof loadPledgesData === 'function') {
+            loadPledgesData(true);
+        } else if (isEventsPage && typeof loadEventsData === 'function') {
+            loadEventsData(true);
+        } else if (isCandidatesPage && typeof loadCandidatesData === 'function') {
+            loadCandidatesData(true);
+        } else if (isAgentsPage && typeof loadAgentsData === 'function') {
+            loadAgentsData(true);
+        } else if (isAnalyticsPage && typeof loadAnalyticsData === 'function') {
+            loadAnalyticsData();
+        }
+        
+        // Use requestAnimationFrame for smooth updates of other sections
+        requestAnimationFrame(() => {
+            // Refresh dashboard data (includes statistics) - this updates all stat boxes
+            if (typeof loadDashboardData === 'function') {
+                loadDashboardData(true);
+            }
+            
+            // Refresh all table data regardless of current page
+            // This ensures all tables are updated when filter changes
+            const refreshFunctions = [
+                { name: 'loadVotersData', func: loadVotersData },
+                { name: 'loadCallsData', func: loadCallsData },
+                { name: 'loadPledgesData', func: loadPledgesData },
+                { name: 'loadEventsData', func: loadEventsData },
+                { name: 'loadCandidatesData', func: loadCandidatesData },
+                { name: 'loadAgentsData', func: loadAgentsData }
+            ];
+            
+            // Refresh all tables with slight delays for smooth rendering
+            refreshFunctions.forEach((item, index) => {
+                if (typeof item.func === 'function') {
+                    // Skip if already refreshed above
+                    if (isVotersPage && item.name === 'loadVotersData') return;
+                    if (isCallsPage && item.name === 'loadCallsData') return;
+                    if (isPledgesPage && item.name === 'loadPledgesData') return;
+                    if (isEventsPage && item.name === 'loadEventsData') return;
+                    if (isCandidatesPage && item.name === 'loadCandidatesData') return;
+                    if (isAgentsPage && item.name === 'loadAgentsData') return;
+                    
+                    setTimeout(() => {
+                        item.func(true); // Force refresh
+                    }, index * 50); // Stagger updates for smoothness
+                }
+            });
+            
+            // Refresh activities
+            if (typeof loadRecentActivities === 'function') {
+                setTimeout(() => {
+                    loadRecentActivities(true);
+                }, refreshFunctions.length * 50);
+            }
+            
+            // Refresh analytics if on analytics page
+            if (currentSection === 'analytics' && typeof loadAnalyticsData === 'function') {
+                setTimeout(() => {
+                    loadAnalyticsData();
+                }, (refreshFunctions.length + 1) * 50);
+            }
+        });
+    }
+
+    // Initial population
+    populateDropdown();
+    updateLocationDisplay();
+
+    // Update when campaign data changes
+    if (!window.campaignData || !window.campaignData.constituency) {
+        const checkCampaignData = setInterval(() => {
+            if (window.campaignData && window.campaignData.constituency) {
+                updateLocationDisplay();
+                populateDropdown();
+                clearInterval(checkCampaignData);
+            }
+        }, 100);
+        setTimeout(() => clearInterval(checkCampaignData), 5000);
+    }
+
+    return true;
+}
+
+window.initializeLocationDisplay = initializeLocationDisplay;
+
+// Update breadcrumb function - Home link removed, replaced with location filter
 function updateBreadcrumb(currentSection) {
     const breadcrumb = document.getElementById('breadcrumb');
     if (breadcrumb) {
-        breadcrumb.innerHTML = `
-            <a href="#" class="breadcrumb-item" id="breadcrumb-home">Home</a>
-        `;
-
-        // Add click handler to navigate to dashboard
-        const homeLink = document.getElementById('breadcrumb-home');
-        if (homeLink) {
-            homeLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (typeof loadPageContent === 'function') {
-                    loadPageContent('dashboard');
-                }
-            });
-        }
+        // Home link removed - location filter is now in header
+        breadcrumb.innerHTML = '';
     }
 }
 
@@ -2364,16 +2891,7 @@ window.updateBreadcrumb = updateBreadcrumb;
 
 // Initialize workspace functionality
 function initializeWorkspace() {
-    // Initialize Home breadcrumb link
-    const breadcrumbHome = document.getElementById('breadcrumb-home');
-    if (breadcrumbHome) {
-        breadcrumbHome.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (typeof loadPageContent === 'function') {
-                loadPageContent('dashboard');
-            }
-        });
-    }
+    // Home breadcrumb link removed - location filter is now in header
 
     // Workspace Navigation - Use event delegation to handle dynamically added nav items
     // Remove existing listener if any (to prevent duplicates)
@@ -3585,7 +4103,8 @@ function updateProfileDisplay(userData) {
 
     // Get user email
     const email = userEmail || (userData && userData.email) || 'user@example.com';
-    const name = (userData && userData.campaignName) || email.split('@')[0] || 'User';
+    // Use email for profile name, not campaign name
+    const name = email.split('@')[0] || 'User';
 
     // Generate initials
     const getInitials = (str) => {

@@ -1,19 +1,21 @@
 // Admin Panel JavaScript
 
-// Firebase Configuration (same as app.js)
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-    apiKey: "AIzaSyApT0uj8sz3mC8bDtLQeHHodAtZlqfJDns",
-    authDomain: "rajjecampaign.firebaseapp.com",
-    projectId: "rajjecampaign",
-    storageBucket: "rajjecampaign.firebasestorage.app",
-    messagingSenderId: "480799282234",
-    appId: "1:480799282234:web:a35c084610bcdfc2ed9103",
-    measurementId: "G-2K7J967N1V"
+    apiKey: "AIzaSyBKrq8w4A05FCWb2pdGZ_sGZi5wEqdMmxM",
+    authDomain: "myapp-5-8bc43.firebaseapp.com",
+    projectId: "myapp-5-8bc43",
+    storageBucket: "myapp-5-8bc43.firebasestorage.app",
+    messagingSenderId: "1096643150430",
+    appId: "1:1096643150430:web:0295ed5bae989263266acf",
+    measurementId: "G-XBPRHN715Z"
 };
 
 // Firebase Imports
 import {
-    initializeApp
+    initializeApp,
+    getApps,
+    getApp
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
     getAuth,
@@ -39,10 +41,10 @@ import {
     orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// Initialize Firebase
+// Initialize Firebase (check if already initialized)
 let app, auth, db;
 try {
-    app = initializeApp(firebaseConfig);
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
     db = getFirestore(app);
     console.log('Firebase initialized successfully');
@@ -87,6 +89,151 @@ let clientsData = [];
 let sessionsData = [];
 let isRegisteringClient = false; // Flag to prevent auth state handler from logging out during registration
 let adminPasswordStored = null; // Temporarily store admin password during registration (cleared after use)
+
+// Global filter state
+let globalConstituencyFilter = '';
+let globalIslandFilter = '';
+
+// Constituency-Island mapping - Use same structure as app.js
+// This will be synchronized with app.js constituencyIslandData
+let constituencyIslandMapping = {};
+
+// Sync with app.js data when available
+function syncConstituencyData() {
+    if (window.constituencyIslandData) {
+        constituencyIslandMapping = window.constituencyIslandData;
+    }
+}
+
+// Initialize on load and when app.js data becomes available
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', syncConstituencyData);
+} else {
+    syncConstituencyData();
+}
+
+// Also sync when window loads (in case app.js loads after admin.js)
+window.addEventListener('load', syncConstituencyData);
+
+// Fallback mapping (will be replaced when app.js loads)
+const fallbackConstituencyMapping = {
+    "A01 Hoarafushi Dhaaira": ["Hoarafushi", "Thuraakunu", "Uligan"],
+    "A02 Ihavandhoo Dhaaira": ["Ihavandhoo", "Maarandhoo", "Molhadhoo"],
+    "A03 Baarashu Dhaairaa": ["Baarah", "Muraidhoo", "Thakandhoo", "Utheemu"],
+    "A04 Dhidhoo Dhaaira": ["Dhidhdhoo"],
+    "A05 Kelaa Dhaaira": ["Filladhoo", "Kelaa", "Vashafaru"],
+    "B01 Hanimaadhoo Dhaaira": ["Finey", "Hanimaadhoo", "Hirimaradhoo", "Naivaadhoo"],
+    "B02 Nolhivaram Dhaaira": ["Kunburudhoo", "Maavaidhoo", "Nolhivaran", "Nolhivaranfaru"],
+    "B03 Vaikaradhoo Dhaaira": ["Kurinbi", "Nellaidhoo", "Vaikaradhoo"],
+    "B04 Kulhudhuffushi Uthuru Dhaaira": ["Kulhudhuffushi"],
+    "B05 Kulhudhuffushi Dhekunu Dhaaira": ["Kulhudhuffushi"],
+    "B06 Makunudhoo Dhaaira": ["Kumundhoo", "Makunudhoo", "Neykurendhoo"],
+    "C01 Kanditheemu Dhaaira": ["Bilehfahi", "Feydhoo", "Goidhoo", "Kanditheemu", "Noomaraa"],
+    "C02 Milandhoo Dhaaira": ["Feevah", "Milandhoo", "Narudhoo"],
+    "C03 Komandoo Dhaaira": ["Foakaidhoo", "Komandoo", "Maroshi"],
+    "C04 Funadhoo Dhaaira": ["Funadhoo", "Lhaimagu", "Maaungoodhoo"],
+    "D01 Kendhikulhudhoo Dhaaira": ["Henbadhoo", "Kendhikulhudhoo", "Kudafari", "Maalhendhoo"],
+    "D02 Manadhoo Dhaaira": ["Landhoo", "Maafaru", "Manadhoo"],
+    "D03 Velidhoo Dhaaira": ["Fodhdhoo", "Lhohi", "Velidhoo"],
+    "D04 Holhudhoo Dhaaira": ["Holhudhoo", "Magoodhoo", "Miladhoo"],
+    "E01 Alifushi Dhaaira": ["Alifushi", "Angolhitheemu", "Rasgetheemu", "Vaadhoo"],
+    "E02 Ungoofaaru Dhaaira": ["Hulhudhuffaaru", "Maakurathu", "Ungoofaaru"],
+    "E03 Dhuvaafaru Dhaairaa": ["Dhuvaafaru"],
+    "E04 Inguraidhoo Dhaaira": ["Fainu", "Inguraidhoo", "Innamaadhoo", "Kinolhas", "Rasmaadhoo"],
+    "E05 Maduvvari Dhaaira": ["Maduvvari", "Meedhoo"],
+    "F01 Thulhaadhoo Dhaaira": ["Fehendhoo", "Fulhadhoo", "Thulhaadhoo"],
+    "F02 Eydhafushi Dhaaira": ["Eydhafushi", "Hithaadhoo", "Maalhos"],
+    "F03 Kendhoo Dhaaira": ["Dharavandhoo", "Dhonfan", "Kamadhoo", "Kendhoo", "Kihaadhoo", "Kudarikilu"],
+    "F04 Hithaadhoo Dhaaira": ["Hithaadhoo"],
+    "G01 Hinnavaru Dhaaira": ["Hinnavaru"],
+    "G02 Naifaru Dhaairaa": ["Naifaru"],
+    "G03 Kurendhoo Dhaaira": ["Kurendhoo", "Olhuvelifushi"],
+    "H01 Kaashidhoo Dhaaira": ["Gaafaru", "Kaashidhoo"],
+    "H02 Thulusdhoo Dhaaira": ["Dhiffushi", "Hinmafushi", "Huraa", "Thulusdhoo"],
+    "H03 Maafushi Dhaaira": ["Gulhi", "Guraidhoo", "Maafushi"],
+    "H04 Huraa Dhaaira": ["Huraa"],
+    "I01 Maamigili Dhaaira": ["Fenfushi", "Maamigili"],
+    "I02 Mahibadhoo Dhaaira": ["Hangnaameedhoo", "Mahibadhoo"],
+    "I03 Dhangethi Dhaaira": ["Dhangethi", "Dhigurah", "Mandhoo", "Omadhoo"],
+    "J01 Felidhoo Dhaaira": ["Felidhoo", "Fulidhoo", "Thinadhoo"],
+    "J02 Keyodhoo Dhaaira": ["Keyodhoo", "Rakeedhoo"],
+    "K01 Dhiggaru Dhaaira": ["Dhiggaru", "Muli", "Raiymandhoo", "Veyvah"],
+    "K02 Mulaku Dhaaira": ["Kolhufushi", "Mulah", "Naalaafushi"],
+    "L01 Bileydhoo Dhaaira": ["Bilehdhoo", "Feeali"],
+    "L02 Nilandhoo Dhaaira": ["Dharanboodhoo", "Nilandhoo"],
+    "M01 Meedhoo Dhaaira": ["Meedhoo", "Bandidhoo", "Hulhudheli", "Rinbudhoo"],
+    "M02 Kudahuvadhoo Dhaaira": ["Kudahuvadhoo", "Maaenboodhoo", "Vaani"],
+    "N01 Vilufushi Dhaaira": ["Buruni", "Madifushi", "Vilufushi"],
+    "N02 Thimarafushi Dhaaira": ["Thimarafushi", "Veymandoo"],
+    "N03 Kinbidhoo Dhaaira": ["Hirilandhoo", "Kandoodhoo", "Kinbidhoo", "Vandhoo"],
+    "N04 Guraidhoo Dhaairaa": ["Guraidhoo"],
+    "O01 Isdhoo Dhaaira": ["Dhanbidhoo", "Isdhoo", "Kalaidhoo", "Maabaidhoo"],
+    "O02 Gamu Dhaaira": ["Gan", "Mundoo"],
+    "O03 Fonadhoo Dhaaira": ["Fonadhoo", "Gaadhoo", "Maamendhoo"],
+    "O04 Maavashu Dhaaira": ["Hithadhoo", "Kunahandhoo", "Maavah"],
+    "P01 Vilingili Dhaaira": ["Kolamaafushi", "Vilingili"],
+    "P02 Dhandhoo Dhaaira": ["Dhaandhoo"],
+    "P03 Gemanafushi Dhaaira": ["Dhevvadhoo", "Dhiyadhoo", "Gemanafushi", "Kanduhulhudhoo", "Kondey"],
+    "P04 Kolamaafushi Dhaaira": ["Kolamaafushi"],
+    "Q01 Thinadhoo Uthuru Dhaairaa": ["Thinadhoo"],
+    "Q02 Thinadhoo Dhekunu Dhaairaa": ["Thinadhoo"],
+    "Q03 Madaveli Dhaaira": ["Hoandedhdhoo", "Madaveli", "Nadellaa"],
+    "Q04 Faresmaathodaa Dhaaira": ["Faresmaathodaa", "Fiyoaree", "Rathafandhoo"],
+    "Q05 Gadhdhoo Dhaaira": ["Gadhdhoo"],
+    "R01 Fuvahmulaku Uthuru Dhaairaa": ["Fuvahmulah"],
+    "R02 Fuvahmulaku Medhu Dhaaira": ["Fuvahmulah"],
+    "R03 Fuvahmulaku Dhekunu Dhaairaa": ["Fuvahmulah"],
+    "S01 Hulhudhoo Dhaairaa": ["Hulhudhoo"],
+    "S02 Feydhoo Dhekunu Dhaairaa": ["Feydhoo"],
+    "S03 Maradhoo Dhaaira": ["Maradhoo"],
+    "S04 Hithadhoo Uthuru Dhaairaa": ["Hithadhoo"],
+    "S05 Hithadhoo Medhu Dhaaira": ["Hithadhoo"],
+    "S06 Hithadhoo Dhekunu Dhaaira": ["Hithadhoo"],
+    "S07 Addu Meedhoo Dhaaira": ["Addu Meedhoo"],
+    "S08 Feydhoo Uthuru Dhaairaa": ["Feydhoo"],
+    "T01 Hulhumale Dhekunu Dhaaira": ["Hulhumale"],
+    "T02 Medhu Henveyru Dhaaira": ["Malé"],
+    "T03 Henveyru Dhekunu Dhaaira": ["Malé"],
+    "T04 Henveyru Uthuru Dhaaira": ["Malé"],
+    "T05 Galolhu Uthuru Dhaaira": ["Malé"],
+    "T06 Galolhu Dhekunu Dhaaira": ["Malé"],
+    "T07 Mahchangoalhee Uthuru Dhaaira": ["Malé"],
+    "T08 Mahchangoalhee Dhekunu Dhaaira": ["Malé"],
+    "T09 Maafannu Uthuru Dhaaira": ["Malé"],
+    "T10 Maafannu Hulhangu Dhaaira": ["Malé"],
+    "T11 Maafannu Medhu Dhaaira": ["Malé"],
+    "T12 Maafannu Dhekunu Dhaaira": ["Malé"],
+    "T13 Villimale Dhaaira": ["Villimale"],
+    "T14 Henveyru Hulhangu Dhaaira": ["Malé"],
+    "T15 Mahchangoalhee Medhu Dhaaira": ["Malé"],
+    "T16 Hulhumaale Medhu Dhaaira": ["Hulhumale"],
+    "T17 Hulhumaale Uthuru Dhaaira": ["Hulhumale"],
+    "U01 Mathiveri Dhaaira": ["Bodufolhudhoo", "Feridhoo", "Himandhoo", "Mathiveri"],
+    "U02 Thoddoo Dhaaira": ["Rasdhoo", "Thoddoo", "Ukulhas"]
+};
+
+// Initialize with fallback, will be replaced when app.js loads
+constituencyIslandMapping = fallbackConstituencyMapping;
+
+// Helper functions for constituency-island relationship
+function getAllConstituencies() {
+    return Object.keys(constituencyIslandMapping).sort();
+}
+
+function getIslandsForConstituency(constituency) {
+    if (!constituency) return [];
+    return constituencyIslandMapping[constituency] || [];
+}
+
+function getConstituencyForIsland(island) {
+    if (!island) return null;
+    for (const [constituency, islands] of Object.entries(constituencyIslandMapping)) {
+        if (islands.includes(island)) {
+            return constituency;
+        }
+    }
+    return null;
+}
 
 // Update admin online status
 async function updateAdminPresence(isOnline) {
@@ -143,15 +290,77 @@ function showLoading(show = true) {
     }
 }
 
+// Firebase Error Code to User-Friendly Message Mapping
+function getFirebaseErrorMessage(error) {
+    // Handle string messages that might contain error codes
+    let errorCode = null;
+    let errorMessage = null;
+
+    if (typeof error === 'string') {
+        // Check if string contains an error code pattern
+        const codeMatch = error.match(/(auth\/[\w-]+|storage\/[\w-]+|permission-denied|unavailable|unauthenticated)/);
+        if (codeMatch) {
+            errorCode = codeMatch[0];
+        } else {
+            // Return the string as-is if it doesn't match a code pattern
+            return error;
+        }
+    } else if (error && typeof error === 'object') {
+        errorCode = error.code;
+        errorMessage = error.message;
+    }
+
+    if (!errorCode) {
+        return errorMessage || 'An unexpected error occurred. Please try again.';
+    }
+
+    const errorMessages = {
+        // Authentication Errors
+        'auth/invalid-credential': 'The email or password you entered is incorrect. Please check your credentials and try again.',
+        'auth/wrong-password': 'The password you entered is incorrect. Please try again.',
+        'auth/user-not-found': 'No account found with this email address. Please check your email and try again.',
+        'auth/invalid-email': 'The email address you entered is not valid. Please enter a valid email address.',
+        'auth/user-disabled': 'This account has been disabled. Please contact your administrator for assistance.',
+        'auth/too-many-requests': 'Too many failed login attempts. Please wait a few minutes before trying again.',
+        'auth/operation-not-allowed': 'This sign-in method is not enabled. Please contact support.',
+        'auth/weak-password': 'The password you entered is too weak. Please use a stronger password (at least 6 characters).',
+        'auth/email-already-in-use': 'An account with this email address already exists.',
+        'auth/requires-recent-login': 'For security reasons, please log in again before changing your password.',
+        'auth/network-request-failed': 'Network error. Please check your internet connection and try again.',
+        'auth/internal-error': 'An internal error occurred. Please try again later.',
+        'auth/user-token-expired': 'Your session has expired. Please log in again.',
+        'auth/invalid-user-token': 'Your session is invalid. Please log in again.',
+        'auth/api-key-not-valid': 'Firebase configuration error. Please contact your administrator.',
+
+        // Firestore Errors
+        'permission-denied': 'You do not have permission to perform this action. Please make sure you are logged in and that your account has the necessary permissions.',
+        'unavailable': 'Service is temporarily unavailable. Please try again later.',
+        'unauthenticated': 'You must be logged in to perform this action.',
+        'cancelled': 'The operation was cancelled.',
+
+        // Storage Errors
+        'storage/unauthorized': 'You do not have permission to upload files. Please contact your administrator.',
+        'storage/canceled': 'Upload was cancelled.',
+        'storage/unknown': 'An unknown error occurred during upload. Please try again.',
+        'storage/invalid-format': 'Invalid file format. Please check the file and try again.',
+        'storage/object-not-found': 'The requested file was not found.',
+    };
+
+    return errorMessages[errorCode] || errorMessage || 'An unexpected error occurred. Please try again.';
+}
+
 function showError(message, elementId = null) {
     // Always hide loading when showing error
     showLoading(false);
+
+    // Get user-friendly error message
+    const friendlyMessage = getFirebaseErrorMessage(message);
 
     // Show inline error if element ID provided
     if (elementId) {
         const errorEl = document.getElementById(elementId);
         if (errorEl) {
-            errorEl.textContent = message;
+            errorEl.textContent = friendlyMessage;
             errorEl.classList.add('show');
             setTimeout(() => {
                 errorEl.classList.remove('show');
@@ -161,10 +370,29 @@ function showError(message, elementId = null) {
     }
 
     // Use dialog if available
+    let dialogTitle = 'Error';
+    if (message && typeof message === 'object' && message.code) {
+        if (message.code.includes('auth/')) {
+            dialogTitle = 'Authentication Error';
+        } else if (message.code.includes('storage/')) {
+            dialogTitle = 'Upload Error';
+        } else if (message.code === 'permission-denied') {
+            dialogTitle = 'Permission Error';
+        }
+    } else if (typeof message === 'string') {
+        if (message.includes('auth/') || message.includes('invalid-credential')) {
+            dialogTitle = 'Authentication Error';
+        } else if (message.includes('storage/')) {
+            dialogTitle = 'Upload Error';
+        } else if (message.includes('permission-denied')) {
+            dialogTitle = 'Permission Error';
+        }
+    }
+
     if (window.showErrorDialog) {
-        window.showErrorDialog(message, 'Error');
+        window.showErrorDialog(friendlyMessage, dialogTitle);
     } else {
-        alert(message);
+        alert(friendlyMessage);
     }
 }
 
@@ -747,25 +975,17 @@ async function handleAdminLogin() {
             email: email
         });
 
-        let errorMessage = 'Invalid credentials. Please check your email and password.';
+        // Use centralized error message function
+        let errorMessage = getFirebaseErrorMessage(error);
 
+        // Add specific context for admin login errors
         if (error.code === 'auth/user-not-found') {
             errorMessage = `Admin account not found. Please create the admin account (${ADMIN_EMAIL}) in Firebase Authentication console first.\n\nTo create the admin account:\n1. Go to Firebase Console\n2. Navigate to Authentication → Users\n3. Click "Add user"\n4. Enter email: ${ADMIN_EMAIL}\n5. Set a password`;
-        } else if (error.code === 'auth/wrong-password') {
-            errorMessage = 'Incorrect password. Please try again.';
-        } else if (error.code === 'auth/invalid-email') {
-            errorMessage = 'Invalid email format. Please check your email address.';
         } else if (error.code === 'auth/invalid-credential') {
             errorMessage = `Invalid email or password. Please verify:\n- Email: ${ADMIN_EMAIL}\n- Password matches what you set in Firebase Authentication`;
-        } else if (error.code === 'auth/network-request-failed') {
-            errorMessage = 'Network error. Please check your internet connection and try again.';
-        } else if (error.code === 'auth/too-many-requests') {
-            errorMessage = 'Too many failed login attempts. Please wait a few minutes and try again.';
-        } else if (error.message) {
-            errorMessage = `Login failed: ${error.message}`;
         }
 
-        showError(errorMessage, 'admin-login-error');
+        showError(error, 'admin-login-error');
     }
 }
 
@@ -839,6 +1059,25 @@ function renderClientsTable() {
     const tbody = document.getElementById('clients-table-body');
     const searchInput = document.getElementById('client-search');
     const filterInput = document.getElementById('status-filter');
+
+    // Get filter values from admin panel filters OR header filters (main app)
+    const adminConstituencyFilter = document.getElementById('global-constituency-filter');
+    const adminIslandFilter = document.getElementById('global-island-filter');
+
+    // Prefer admin panel filters if available, otherwise use header filter state
+    let selectedConstituency = '';
+    let selectedIsland = '';
+
+    if (adminConstituencyFilter && adminIslandFilter) {
+        // Admin panel filters
+        selectedConstituency = adminConstituencyFilter.value || '';
+        selectedIsland = adminIslandFilter.value || '';
+    } else {
+        // No header filters - use empty values
+        selectedConstituency = '';
+        selectedIsland = '';
+    }
+
     const searchTerm = (searchInput && searchInput.value) ? searchInput.value.toLowerCase() : '';
     const statusFilter = (filterInput && filterInput.value) ? filterInput.value : 'all';
 
@@ -853,7 +1092,38 @@ function renderClientsTable() {
             (statusFilter === 'suspended' && client.isActive === false) ||
             (statusFilter === 'pending' && !client.licenseActive);
 
-        return matchesSearch && matchesStatus;
+        // Apply constituency filter
+        let matchesConstituency = true;
+        if (selectedConstituency) {
+            matchesConstituency = client.constituency === selectedConstituency;
+        }
+
+        // Apply island filter with proper constituency-island relationship
+        let matchesIsland = true;
+        if (selectedIsland) {
+            if (selectedConstituency) {
+                // If both constituency and island are selected, island must match exactly
+                // and must belong to the selected constituency
+                const constituencyIslands = getIslandsForConstituency(selectedConstituency);
+                matchesIsland = client.island === selectedIsland && constituencyIslands.includes(selectedIsland);
+            } else {
+                // If only island is selected, check if it matches AND belongs to client's constituency
+                // This ensures island resolves correctly through its parent constituency
+                if (client.constituency) {
+                    const clientConstituencyIslands = getIslandsForConstituency(client.constituency);
+                    matchesIsland = client.island === selectedIsland && clientConstituencyIslands.includes(selectedIsland);
+                } else {
+                    // Fallback: just match island if constituency not available
+                    matchesIsland = client.island === selectedIsland;
+                }
+            }
+        } else if (selectedConstituency) {
+            // If constituency is selected but no island, show all islands in that constituency
+            const constituencyIslands = getIslandsForConstituency(selectedConstituency);
+            matchesIsland = client.constituency === selectedConstituency && constituencyIslands.includes(client.island);
+        }
+
+        return matchesSearch && matchesStatus && matchesConstituency && matchesIsland;
     });
 
     // Reset to first page when filtering/searching
@@ -870,7 +1140,7 @@ function renderClientsTable() {
     tbody.innerHTML = '';
 
     if (filteredClients.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-light);">No clients found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px; color: var(--text-light);">No clients found</td></tr>';
         renderPagination('clients-pagination', clientsCurrentPage, totalPages, (page) => {
             clientsCurrentPage = page;
             renderClientsTable();
@@ -878,15 +1148,40 @@ function renderClientsTable() {
         return;
     }
 
-    paginatedClients.forEach(client => {
+    paginatedClients.forEach((client, index) => {
         const row = document.createElement('tr');
         const statusClass = client.isActive === false ? 'suspended' : (client.licenseActive ? 'active' : 'pending');
         const statusText = client.isActive === false ? 'Suspended' : (client.licenseActive ? 'Active' : 'Pending');
+
+        // License code display logic
+        const licenseCode = client.serialNumber || 'N/A';
+        const licenseCodeId = `license-code-${client.id || index}`;
+        const licenseToggleId = `license-toggle-${client.id || index}`;
+        const displayCode = licenseCode === 'N/A' ? 'N/A' : (licenseCode.length > 4 ? licenseCode.substring(0, 4) + '••••' : licenseCode);
+        const fullCode = licenseCode;
+        const hasToggle = licenseCode !== 'N/A' && licenseCode.length > 4;
 
         row.innerHTML = `
             <td><strong>${client.clientCode || 'N/A'}</strong></td>
             <td>${client.name || 'N/A'}</td>
             <td>${client.email || 'N/A'}</td>
+            <td>${client.constituency || 'N/A'}</td>
+            <td>${client.island || 'N/A'}</td>
+            <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="${licenseCodeId}" style="font-family: monospace;">${displayCode}</span>
+                    ${hasToggle ? `
+                        <button id="${licenseToggleId}" 
+                                class="btn-icon" 
+                                style="padding: 4px 8px; min-width: auto; font-size: 12px;" 
+                                data-full-code="${fullCode.replace(/"/g, '&quot;')}" 
+                                data-masked-code="${displayCode.replace(/"/g, '&quot;')}"
+                                onclick="toggleLicenseCode('${licenseCodeId}', '${licenseToggleId}')">
+                            <span data-icon="eye"></span>
+                        </button>
+                    ` : ''}
+                </div>
+            </td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td>${client.createdAt ? new Date(client.createdAt.toDate()).toLocaleDateString() : 'N/A'}</td>
             <td>${client.lastActive ? new Date(client.lastActive.toDate()).toLocaleDateString() : 'Never'}</td>
@@ -908,7 +1203,57 @@ function renderClientsTable() {
         clientsCurrentPage = page;
         renderClientsTable();
     }, filteredClients.length);
+
+    // Initialize icons for newly rendered elements
+    if (typeof initializeIcons === 'function') {
+        initializeIcons();
+    }
 }
+
+// Toggle License Code Visibility
+function toggleLicenseCode(codeElementId, toggleButtonId) {
+    const codeElement = document.getElementById(codeElementId);
+    const toggleButton = document.getElementById(toggleButtonId);
+
+    if (!codeElement || !toggleButton) return;
+
+    const fullCode = toggleButton.getAttribute('data-full-code');
+    const maskedCode = toggleButton.getAttribute('data-masked-code');
+    const isCurrentlyMasked = codeElement.textContent.includes('••••');
+
+    if (isCurrentlyMasked) {
+        // Show full code
+        codeElement.textContent = fullCode;
+        toggleButton.innerHTML = '<span data-icon="eye-off"></span>';
+        toggleButton.setAttribute('title', 'Hide full code');
+        // Re-initialize icon
+        if (typeof initializeIcons === 'function') {
+            initializeIcons();
+        } else if (typeof icons !== 'undefined') {
+            const iconSpan = toggleButton.querySelector('[data-icon]');
+            if (iconSpan && icons['eye-off']) {
+                iconSpan.innerHTML = icons['eye-off'];
+            }
+        }
+    } else {
+        // Show masked code
+        codeElement.textContent = maskedCode;
+        toggleButton.innerHTML = '<span data-icon="eye"></span>';
+        toggleButton.setAttribute('title', 'Show full code');
+        // Re-initialize icon
+        if (typeof initializeIcons === 'function') {
+            initializeIcons();
+        } else if (typeof icons !== 'undefined') {
+            const iconSpan = toggleButton.querySelector('[data-icon]');
+            if (iconSpan && icons['eye']) {
+                iconSpan.innerHTML = icons['eye'];
+            }
+        }
+    }
+}
+
+// Expose toggleLicenseCode to global scope for inline onclick handlers
+window.toggleLicenseCode = toggleLicenseCode;
 
 // Update Stats
 function updateStats() {
@@ -1018,8 +1363,10 @@ async function registerNewClient() {
         const emailInput = document.getElementById('client-email-register');
         const clientCodeInput = document.getElementById('client-code-register');
         const tempPasswordInput = document.getElementById('client-temp-password');
+        const constituencyInput = document.getElementById('client-constituency-register');
+        const islandInput = document.getElementById('client-island-register');
 
-        if (!nameInput || !emailInput || !clientCodeInput || !tempPasswordInput) {
+        if (!nameInput || !emailInput || !clientCodeInput || !tempPasswordInput || !constituencyInput || !islandInput) {
             throw new Error('Form fields not found. Please refresh the page.');
         }
 
@@ -1027,6 +1374,8 @@ async function registerNewClient() {
         const email = emailInput.value.trim();
         const clientCode = clientCodeInput.value.trim();
         const tempPassword = tempPasswordInput.value.trim();
+        const constituency = constituencyInput.value.trim();
+        const island = islandInput.value.trim();
 
         console.log('[registerNewClient] Form values:', {
             name,
@@ -1056,6 +1405,25 @@ async function registerNewClient() {
         // Validate name
         if (!name) {
             showError('Please enter a client name', 'client-register-error');
+            return;
+        }
+
+        // Validate constituency
+        if (!constituency) {
+            showError('Please select a constituency', 'client-register-error');
+            return;
+        }
+
+        // Validate island
+        if (!island) {
+            showError('Please select an island', 'client-register-error');
+            return;
+        }
+
+        // Validate island belongs to selected constituency
+        const constituencyIslands = getIslandsForConstituency(constituency);
+        if (!constituencyIslands.includes(island)) {
+            showError(`Selected island "${island}" does not belong to constituency "${constituency}". Please select a valid island.`, 'client-register-error');
             return;
         }
 
@@ -1230,6 +1598,8 @@ async function registerNewClient() {
                     name,
                     email,
                     clientCode,
+                    constituency,
+                    island,
                     tempPassword,
                     createdAt: serverTimestamp(),
                     isActive: true,
@@ -1439,42 +1809,20 @@ async function registerNewClient() {
                 `3. Use a different email address\n\n` +
                 `Email: ${email}`;
             errorTitle = 'Email Already Registered';
-        } else if (error.code === 'auth/invalid-email') {
-            errorMessage = 'Invalid email address format. Please enter a valid email address.';
-            errorTitle = 'Invalid Email';
-        } else if (error.code === 'auth/weak-password') {
-            errorMessage = 'The temporary password is too weak. Please generate a stronger password (minimum 6 characters).';
-            errorTitle = 'Weak Password';
-        } else if (error.code === 'auth/operation-not-allowed') {
-            errorMessage = 'Email/password authentication is not enabled. Please enable it in Firebase Console.';
-            errorTitle = 'Authentication Not Enabled';
-        } else if (error.code === 'permission-denied') {
-            errorMessage = 'You do not have permission to perform this action. Please check Firebase security rules.';
-            errorTitle = 'Permission Denied';
-        } else if (error.message) {
-            errorMessage = error.message;
-            // Check if it's a timeout error
-            if (error.message.includes('timeout')) {
+        } else {
+            // Use centralized error message function for all other errors
+            errorMessage = getFirebaseErrorMessage(error);
+            if (error.code === 'permission-denied') {
+                errorTitle = 'Permission Denied';
+            } else if (error.code && error.code.includes('auth/')) {
+                errorTitle = 'Authentication Error';
+            } else if (error.message && error.message.includes('timeout')) {
                 errorTitle = 'Registration Timeout';
             }
         }
 
-        // Show error
-        const errorEl = document.getElementById('client-register-error');
-        if (errorEl) {
-            errorEl.textContent = errorMessage;
-            errorEl.classList.add('show');
-            setTimeout(() => {
-                errorEl.classList.remove('show');
-            }, 10000); // Show for 10 seconds
-        }
-
-        // Also show in dialog
-        if (window.showErrorDialog) {
-            window.showErrorDialog(errorMessage, errorTitle);
-        } else {
-            alert(`${errorTitle}\n\n${errorMessage}`);
-        }
+        // Show error using centralized function
+        showError(error, 'client-register-error');
     } finally {
         // Always ensure loading is cleared and flag is reset
         console.log('[registerNewClient] Finally: Ensuring loading is cleared and flag is reset');
@@ -2539,7 +2887,132 @@ window.viewClientLink = viewClientLink;
 window.endSession = endSession;
 
 // Search and Filter Listeners
+// Populate Constituency and Island Dropdowns
+function populateConstituencyDropdown(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const constituencies = getAllConstituencies();
+    constituencies.forEach(constituency => {
+        const option = document.createElement('option');
+        option.value = constituency;
+        option.textContent = constituency;
+        select.appendChild(option);
+    });
+}
+
+function populateIslandDropdown(selectId, constituency = null) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    // Clear existing options except the first one
+    const firstOption = select.querySelector('option[value=""]');
+    select.innerHTML = '';
+    if (firstOption) {
+        select.appendChild(firstOption);
+    } else {
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = constituency ? 'Select Island' : 'All Islands';
+        select.appendChild(defaultOption);
+    }
+
+    let islands = [];
+    if (constituency) {
+        islands = getIslandsForConstituency(constituency);
+    } else {
+        // Get all unique islands
+        const allIslands = new Set();
+        Object.values(constituencyIslandMapping).forEach(islandList => {
+            islandList.forEach(island => allIslands.add(island));
+        });
+        islands = Array.from(allIslands).sort();
+    }
+
+    islands.forEach(island => {
+        const option = document.createElement('option');
+        option.value = island;
+        option.textContent = island;
+        select.appendChild(option);
+    });
+}
+
+// Initialize Filters
+function initializeFilters() {
+    // Populate global filter dropdowns
+    populateConstituencyDropdown('global-constituency-filter');
+    populateIslandDropdown('global-island-filter');
+
+    // Populate client registration form dropdowns
+    populateConstituencyDropdown('client-constituency-register');
+    populateIslandDropdown('client-island-register');
+
+    // Handle constituency change in registration form
+    const constituencySelect = document.getElementById('client-constituency-register');
+    if (constituencySelect) {
+        constituencySelect.addEventListener('change', (e) => {
+            const constituency = e.target.value;
+            populateIslandDropdown('client-island-register', constituency);
+        });
+    }
+
+    // Handle global filter changes
+    const globalConstituencyFilterEl = document.getElementById('global-constituency-filter');
+    const globalIslandFilterEl = document.getElementById('global-island-filter');
+    const clearFiltersBtn = document.getElementById('clear-filters-btn');
+
+    if (globalConstituencyFilterEl) {
+        globalConstituencyFilterEl.addEventListener('change', (e) => {
+            globalConstituencyFilter = e.target.value;
+            // Update island dropdown based on selected constituency
+            populateIslandDropdown('global-island-filter', globalConstituencyFilter);
+            // Reset island filter if constituency changed
+            if (globalIslandFilterEl) {
+                globalIslandFilterEl.value = '';
+                globalIslandFilter = '';
+            }
+            updateFilterVisibility();
+            renderClientsTable();
+        });
+    }
+
+    if (globalIslandFilterEl) {
+        globalIslandFilterEl.addEventListener('change', (e) => {
+            globalIslandFilter = e.target.value;
+            updateFilterVisibility();
+            renderClientsTable();
+        });
+    }
+
+    if (clearFiltersBtn) {
+        clearFiltersBtn.addEventListener('click', () => {
+            const constituencyFilterEl = document.getElementById('global-constituency-filter');
+            const islandFilterEl = document.getElementById('global-island-filter');
+            if (constituencyFilterEl) constituencyFilterEl.value = '';
+            if (islandFilterEl) islandFilterEl.value = '';
+            globalConstituencyFilter = '';
+            globalIslandFilter = '';
+            updateFilterVisibility();
+            renderClientsTable();
+        });
+    }
+}
+
+function updateFilterVisibility() {
+    const clearFiltersBtn = document.getElementById('clear-filters-btn');
+    if (clearFiltersBtn) {
+        if (globalConstituencyFilter || globalIslandFilter) {
+            clearFiltersBtn.style.display = 'block';
+        } else {
+            clearFiltersBtn.style.display = 'none';
+        }
+    }
+}
+
+// Creative Location Display moved to app.js
+
 document.addEventListener('DOMContentLoaded', () => {
+
     const clientSearch = document.getElementById('client-search');
     const statusFilter = document.getElementById('status-filter');
 
@@ -2550,6 +3023,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (statusFilter) {
         statusFilter.addEventListener('change', renderClientsTable);
     }
+
+    // Initialize filters (admin panel)
+    initializeFilters();
 });
 
 // Initialize on load

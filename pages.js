@@ -1,5 +1,72 @@
 // Page Content Templates for all sections - All data loaded dynamically from Firebase
 
+// Delete Call Function will be defined later - ensure placeholder exists
+if (typeof window.deleteCall === 'undefined') {
+    window.deleteCall = null; // Placeholder to prevent errors
+}
+
+// Global Filter Utilities
+(function() {
+    'use strict';
+
+    // Apply global filter to Firestore query
+    function applyFilterToQuery(baseQuery, collectionName) {
+        if (!window.GlobalFilter) {
+            return baseQuery;
+        }
+
+        const filterState = window.GlobalFilter.getState();
+        if (!filterState.isActive) {
+            return baseQuery;
+        }
+
+        // Import Firestore functions dynamically
+        return Promise.resolve().then(async () => {
+            const {
+                where,
+                query
+            } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+
+            if (filterState.type === 'constituency') {
+                return query(baseQuery, where('constituency', '==', filterState.value));
+            } else if (filterState.type === 'island') {
+                return query(baseQuery, where('island', '==', filterState.value));
+            }
+
+            return baseQuery;
+        });
+    }
+
+    // Apply global filter to array of data
+    function applyFilterToArray(dataArray) {
+        if (!window.GlobalFilter || !Array.isArray(dataArray)) {
+            return dataArray;
+        }
+        return window.GlobalFilter.filterArray(dataArray);
+    }
+
+    // Get filter description for UI
+    function getFilterDescription() {
+        if (!window.GlobalFilter) {
+            return null;
+        }
+        const filterState = window.GlobalFilter.getState();
+        if (!filterState.isActive) {
+            return null;
+        }
+        return filterState.type === 'constituency' ?
+            `Filtered by Constituency: ${filterState.value}` :
+            `Filtered by Island: ${filterState.value}`;
+    }
+
+    // Expose filter utilities
+    window.FilterUtils = {
+        applyFilterToQuery: applyFilterToQuery,
+        applyFilterToArray: applyFilterToArray,
+        getFilterDescription: getFilterDescription
+    };
+})();
+
 const pageTemplates = {
     dashboard: `
         <div class="page-header">
@@ -117,10 +184,28 @@ const pageTemplates = {
                 <h1>Candidate Management</h1>
                 <p class="page-subtitle">Manage candidate profiles and information</p>
             </div>
-            <button class="btn-primary btn-compact">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; display: inline-block;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                Add Candidate
-            </button>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <select id="candidate-island-filter" class="search-input" style="width: 180px; min-width: 0; flex-shrink: 0;">
+                    <option value="">All Islands</option>
+                </select>
+                <select id="candidate-position-filter" class="search-input" style="width: 200px; min-width: 0; flex-shrink: 0;">
+                    <option value="">All Positions</option>
+                    <!-- Positions will be populated dynamically based on campaign type -->
+                </select>
+                <div style="display: flex; gap: 10px; align-items: center; flex-shrink: 0;">
+                    <button id="clear-candidate-filters-btn" class="btn-secondary btn-compact" style="display: none; white-space: nowrap;" onclick="clearCandidateFilters()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                        Clear Filters
+                    </button>
+                    <button class="btn-primary btn-compact" style="white-space: nowrap;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; display: inline-block;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add Candidate
+                    </button>
+                </div>
+            </div>
         </div>
         
         <div class="table-container">
@@ -129,7 +214,7 @@ const pageTemplates = {
                     <tr>
                         <th>Name</th>
                         <th>Position</th>
-                        <th>Constituency</th>
+                        <th>Island</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -142,6 +227,29 @@ const pageTemplates = {
             </table>
         </div>
         <div id="candidates-pagination" class="table-pagination" style="display: none;"></div>
+        <!-- Candidate Details Side Panel -->
+        <div id="candidate-details-side-panel" class="call-details-side-panel" style="display: none;">
+            <div class="call-details-side-panel-header">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--text-color);">Candidate Details</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="maximize-candidate-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'" title="Maximize">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                        </svg>
+                    </button>
+                    <button id="close-candidate-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="candidate-details-side-panel-content" class="call-details-side-panel-content" style="padding: 20px; overflow-y: auto; flex: 1;">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+        <div id="candidate-details-side-panel-overlay" class="call-details-side-panel-overlay" style="display: none;"></div>
     `,
 
     voters: `
@@ -233,6 +341,8 @@ const pageTemplates = {
                         <th style="width: 40px;">No.</th>
                         <th style="width: 60px;">Image</th>
                         <th>Name</th>
+                        <th>Constituency</th>
+                        <th>Island</th>
                         <th>Permanent Address</th>
                         <th>Current Location</th>
                         <th style="width: 100px;">Actions</th>
@@ -240,12 +350,35 @@ const pageTemplates = {
                 </thead>
                 <tbody id="voters-table-body">
                     <tr>
-                        <td colspan="13" style="text-align: center; padding: 40px; color: var(--text-light);">No voters registered yet</td>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: var(--text-light);">No voters registered yet</td>
                     </tr>
                 </tbody>
             </table>
         </div>
         <div id="voters-pagination" class="table-pagination" style="display: none;"></div>
+        <!-- Voter Details Side Panel -->
+        <div id="voter-details-side-panel" class="call-details-side-panel" style="display: none;">
+            <div class="call-details-side-panel-header">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--text-color);">Voter Details</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="maximize-voter-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'" title="Maximize">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                        </svg>
+                    </button>
+                    <button id="close-voter-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="voter-details-side-panel-content" class="call-details-side-panel-content" style="padding: 20px; overflow-y: auto; flex: 1;">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+        <div id="voter-details-side-panel-overlay" class="call-details-side-panel-overlay" style="display: none;"></div>
     `,
 
     events: `
@@ -265,6 +398,29 @@ const pageTemplates = {
                 <p>No events scheduled yet</p>
             </div>
         </div>
+        <!-- Event Details Side Panel -->
+        <div id="event-details-side-panel" class="call-details-side-panel" style="display: none;">
+            <div class="call-details-side-panel-header">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--text-color);">Event Details</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="maximize-event-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'" title="Maximize">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                        </svg>
+                    </button>
+                    <button id="close-event-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="event-details-side-panel-content" class="call-details-side-panel-content" style="padding: 20px; overflow-y: auto; flex: 1;">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+        <div id="event-details-side-panel-overlay" class="call-details-side-panel-overlay" style="display: none;"></div>
     `,
 
     calls: `
@@ -353,25 +509,43 @@ const pageTemplates = {
         </div>
         
         <div class="table-container">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Voter Name</th>
-                        <th>Phone</th>
-                        <th>Caller</th>
-                        <th>Date & Time</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="calls-table-body">
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">No calls recorded yet</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <div id="calls-pagination" class="table-pagination" style="display: none;"></div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Voter Name</th>
+                            <th>Constituency</th>
+                            <th>Island</th>
+                            <th>Phone</th>
+                            <th>Caller</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calls-table-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-light);">No calls recorded yet</td>
+                        </tr>
+                    </tbody></table></div><!-- Call Details Side Panel -->
+            <div id="call-details-side-panel" class="call-details-side-panel" style="display: none;">
+                <div class="call-details-side-panel-header">
+                    <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--text-color);">Call Details</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button id="maximize-call-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'" title="Maximize">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                            </svg>
+                        </button>
+                        <button id="close-call-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="call-details-side-panel-content" class="call-details-side-panel-content" style="padding: 20px; overflow-y: auto; flex: 1;">
+                    <!-- Content will be populated dynamically -->
+                </div></div><div id="call-details-side-panel-overlay" class="call-details-side-panel-overlay" style="display: none;"></div><div id="calls-pagination" class="table-pagination" style="display: none;"></div>
     `,
 
     pledges: `
@@ -470,6 +644,8 @@ const pageTemplates = {
                         <th>Image</th>
                         <th>ID Number</th>
                         <th>Name</th>
+                        <th>Constituency</th>
+                        <th>Island</th>
                         <th>Permanent Address</th>
                         <th>Current Location</th>
                         <th>Pledge Status</th>
@@ -485,6 +661,29 @@ const pageTemplates = {
             </table>
         </div>
         <div id="pledges-pagination" class="table-pagination" style="display: none;"></div>
+        <!-- Pledge Details Side Panel -->
+        <div id="pledge-details-side-panel" class="call-details-side-panel" style="display: none;">
+            <div class="call-details-side-panel-header">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--text-color);">Pledge Details</h2>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="maximize-pledge-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'" title="Maximize">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                        </svg>
+                    </button>
+                    <button id="close-pledge-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)'" onmouseout="this.style.background='transparent'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="pledge-details-side-panel-content" class="call-details-side-panel-content" style="padding: 20px; overflow-y: auto; flex: 1;">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+        <div id="pledge-details-side-panel-overlay" class="call-details-side-panel-overlay" style="display: none;"></div>
     `,
 
     agents: `
@@ -533,6 +732,23 @@ const pageTemplates = {
             </table>
         </div>
         <div id="agents-pagination" class="table-pagination" style="display: none;">        </div>
+        
+        <!-- Assign Voters Side Panel -->
+        <div id="assign-voters-side-panel" class="call-details-side-panel" style="display: none; position: fixed; top: 0; right: 0; width: 90%; max-width: 1400px; height: 100vh; background: white; box-shadow: -4px 0 20px rgba(0,0,0,0.15); z-index: 10000; flex-direction: column; transform: translateX(100%); transition: transform 0.3s ease;">
+            <div class="call-details-side-panel-header" style="padding: 20px; border-bottom: 2px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--text-color);">Assign Voters to Agents</h2>
+                <button id="close-assign-voters-side-panel" class="icon-btn" style="width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--text-color); cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;" onmouseover="this.style.background='var(--light-color)';" onmouseout="this.style.background='transparent';">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="assign-voters-side-panel-content" class="call-details-side-panel-content" style="padding: 20px; overflow-y: auto; flex: 1;">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+        <div id="assign-voters-side-panel-overlay" class="call-details-side-panel-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999;"></div>
     `,
 
     'zero-day': `
@@ -1072,6 +1288,21 @@ const pageTemplates = {
             </div>
             
             <div class="settings-section">
+                <h2>Display Preferences</h2>
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h3>Show Voter Images</h3>
+                            <p>Display voter images from the Images folder. When disabled, only avatar initials will be shown.</p>
+                        </div>
+                        <div class="setting-value">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="voter-images-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="settings-section">
@@ -1167,6 +1398,7 @@ function _loadPageContentInternal(section) {
                 if (section === 'dashboard') {
                     loadDashboardData();
                 } else if (section === 'candidates') {
+                    setupCandidateFilters();
                     loadCandidatesData();
                     setupSearchListeners('candidates');
                 } else if (section === 'voters') {
@@ -1321,10 +1553,21 @@ async function loadDashboardData(forceRefresh = false) {
         );
         window.dashboardListeners.push(unsubCandidates);
 
-        // Voters listener
+        // Voters listener - apply global filter
         const unsubVoters = onSnapshot(votersQuery,
             (snapshot) => {
-                updateStat('stat-voters', snapshot.size);
+                let filteredSize = snapshot.size;
+                if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+                    let count = 0;
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        if (window.GlobalFilter.matchesFilter(data)) {
+                            count++;
+                        }
+                    });
+                    filteredSize = count;
+                }
+                updateStat('stat-voters', filteredSize);
                 if (statsLoaded < totalStats) checkComplete();
             },
             (error) => {
@@ -1335,13 +1578,19 @@ async function loadDashboardData(forceRefresh = false) {
         );
         window.dashboardListeners.push(unsubVoters);
 
-        // Events listener - count only upcoming events (future dates)
+        // Events listener - count only upcoming events (future dates) and apply global filter
         const unsubEvents = onSnapshot(eventsQuery,
             (snapshot) => {
                 const now = new Date();
                 let upcomingCount = 0;
                 snapshot.forEach(doc => {
                     const eventData = doc.data();
+                    // Apply global filter first
+                    if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+                        if (!window.GlobalFilter.matchesFilter(eventData)) {
+                            return;
+                        }
+                    }
                     if (eventData.eventDate) {
                         const eventDate = eventData.eventDate.toDate ? eventData.eventDate.toDate() : new Date(eventData.eventDate);
                         // Count only events with dates in the future
@@ -1361,10 +1610,21 @@ async function loadDashboardData(forceRefresh = false) {
         );
         window.dashboardListeners.push(unsubEvents);
 
-        // Calls listener
+        // Calls listener - apply global filter
         const unsubCalls = onSnapshot(callsQuery,
             (snapshot) => {
-                updateStat('stat-calls', snapshot.size);
+                let filteredSize = snapshot.size;
+                if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+                    let count = 0;
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        if (window.GlobalFilter.matchesFilter(data)) {
+                            count++;
+                        }
+                    });
+                    filteredSize = count;
+                }
+                updateStat('stat-calls', filteredSize);
                 if (statsLoaded < totalStats) checkComplete();
             },
             (error) => {
@@ -1694,11 +1954,87 @@ async function loadCandidatesData(forceRefresh = false) {
             });
         });
 
-        dataCache.candidates.data = candidatesArray;
+        // Apply global filter
+        // For candidates: Constituency is master - show all when constituency or show all is selected
+        // Only filter by island when island filter is active
+        let filteredCandidates = candidatesArray;
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            const filterState = window.GlobalFilter.getState();
+
+            // Only apply filter if it's an island filter
+            // For constituency or show all, show all candidates regardless of island
+            if (filterState.type === 'island') {
+                const beforeFilterCount = filteredCandidates.length;
+
+                filteredCandidates = filteredCandidates.filter(candidate => {
+                    const matches = window.GlobalFilter.matchesFilter(candidate);
+
+                    // Debug logging for island filter (only log first few)
+                    if (!matches && Math.random() < 0.05) {
+                        console.log('[loadCandidatesData] Candidate filtered out by island:', {
+                            candidateName: candidate.name,
+                            candidateIsland: candidate.island || candidate.constituency || 'N/A',
+                            filterIsland: filterState.value,
+                            allData: candidate
+                        });
+                    }
+
+                    return matches;
+                });
+
+                const afterFilterCount = filteredCandidates.length;
+                console.log(`[loadCandidatesData] Island filter applied: ${beforeFilterCount} -> ${afterFilterCount} candidates (filter: ${filterState.value})`);
+            } else if (filterState.type === 'constituency') {
+                // Constituency selected - show all candidates (no filtering)
+                console.log(`[loadCandidatesData] Constituency filter active - showing all ${filteredCandidates.length} candidates (constituency is master)`);
+            }
+        } else {
+            // No filter active (Show All) - show all candidates
+            console.log(`[loadCandidatesData] No filter active - showing all ${filteredCandidates.length} candidates`);
+        }
+
+        // Apply local candidate filters (Island and Position) - these are applied after global filter
+        const islandFilter = document.getElementById('candidate-island-filter').value || '';
+        const positionFilter = document.getElementById('candidate-position-filter').value || '';
+
+        if (islandFilter || positionFilter) {
+            const beforeLocalFilterCount = filteredCandidates.length;
+
+            filteredCandidates = filteredCandidates.filter(candidate => {
+                // Filter by island
+                if (islandFilter) {
+                    const candidateIsland = (candidate.island || candidate.constituency || '').trim();
+                    if (candidateIsland.toLowerCase() !== islandFilter.toLowerCase()) {
+                        return false;
+                    }
+                }
+
+                // Filter by position
+                if (positionFilter) {
+                    const candidatePosition = (candidate.position || '').trim();
+                    if (candidatePosition.toLowerCase() !== positionFilter.toLowerCase()) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            const afterLocalFilterCount = filteredCandidates.length;
+            console.log(`[loadCandidatesData] Local filters applied: ${beforeLocalFilterCount} -> ${afterLocalFilterCount} candidates (island: ${islandFilter || 'all'}, position: ${positionFilter || 'all'})`);
+        }
+
+        dataCache.candidates.data = filteredCandidates;
         dataCache.candidates.timestamp = Date.now();
         dataCache.candidates.userEmail = window.userEmail;
+        // Store current filter state to detect changes
+        if (window.GlobalFilter) {
+            dataCache.candidates.filterState = {
+                ...window.GlobalFilter.getState()
+            };
+        }
 
-        if (candidatesArray.length === 0) {
+        if (filteredCandidates.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-light);">No candidates registered yet</td></tr>';
             renderPagination('candidates', 0);
             return;
@@ -1708,7 +2044,7 @@ async function loadCandidatesData(forceRefresh = false) {
         const state = paginationState.candidates;
         const startIndex = (state.currentPage - 1) * state.recordsPerPage;
         const endIndex = startIndex + state.recordsPerPage;
-        const paginatedCandidates = candidatesArray.slice(startIndex, endIndex);
+        const paginatedCandidates = filteredCandidates.slice(startIndex, endIndex);
 
         // Use DocumentFragment for efficient DOM updates
         const fragment = document.createDocumentFragment();
@@ -1718,6 +2054,8 @@ async function loadCandidatesData(forceRefresh = false) {
             const candidateId = data.candidateId || 'N/A';
 
             const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.dataset.candidateId = item.id;
             row.innerHTML = `
                 <td>
                     <div class="table-cell-user">
@@ -1729,22 +2067,33 @@ async function loadCandidatesData(forceRefresh = false) {
                     </div>
                 </td>
                 <td>${data.position || 'N/A'}</td>
-                <td>${data.constituency || 'N/A'}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.island || data.constituency || 'N/A'}">${data.island || data.constituency || 'N/A'}</td>
                 <td><span class="status-badge ${data.status === 'active' ? 'status-active' : 'status-pending'}">${data.status || 'Pending'}</span></td>
                 <td>
                     <div class="table-actions">
-                        <button class="icon-btn" title="Edit" onclick="editCandidate('${item.id}')">
+                        <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); editCandidate('${item.id}')">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         </button>
-                        <button class="icon-btn" title="View Details" onclick="viewCandidateDetails('${item.id}')">
+                        <button class="icon-btn" title="View Details" onclick="event.stopPropagation(); if (window.openCandidateDetailsSidePanel) window.openCandidateDetailsSidePanel('${item.id}');">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                         </button>
-                        <button class="icon-btn icon-btn-danger" title="Delete" onclick="deleteCandidate('${item.id}')">
+                        <button class="icon-btn icon-btn-danger" title="Delete" onclick="event.stopPropagation(); deleteCandidate('${item.id}')">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         </button>
                     </div>
                 </td>
             `;
+
+            // Add click handler to row
+            row.addEventListener('click', function(e) {
+                if (e.target.closest('.table-actions')) {
+                    return;
+                }
+                if (window.openCandidateDetailsSidePanel) {
+                    window.openCandidateDetailsSidePanel(item.id);
+                }
+            });
+
             fragment.appendChild(row);
         });
 
@@ -1755,12 +2104,48 @@ async function loadCandidatesData(forceRefresh = false) {
         });
 
         // Render pagination
-        renderPagination('candidates', candidatesArray.length);
+        renderPagination('candidates', filteredCandidates.length);
+
+        // Populate island filter dropdown with unique islands from candidates if not already populated
+        populateCandidateIslandFilterFromData(candidatesArray);
     } catch (error) {
         console.error('Error loading candidates:', error);
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading candidates</td></tr>';
         renderPagination('candidates', 0);
     }
+}
+
+// Populate candidate island filter from candidate data
+function populateCandidateIslandFilterFromData(candidatesArray) {
+    const islandFilter = document.getElementById('candidate-island-filter');
+    if (!islandFilter) return;
+
+    // Check if already populated from constituency
+    if (islandFilter.options.length > 1) {
+        return; // Already populated
+    }
+
+    // Get unique islands from candidates
+    const uniqueIslands = new Set();
+    candidatesArray.forEach(candidate => {
+        const island = candidate.island || candidate.constituency;
+        if (island && island.trim()) {
+            uniqueIslands.add(island.trim());
+        }
+    });
+
+    // Sort and add to dropdown
+    const sortedIslands = Array.from(uniqueIslands).sort();
+    sortedIslands.forEach(island => {
+        // Check if option already exists
+        const exists = Array.from(islandFilter.options).some(opt => opt.value === island);
+        if (!exists) {
+            const option = document.createElement('option');
+            option.value = island;
+            option.textContent = island;
+            islandFilter.appendChild(option);
+        }
+    });
 }
 
 // Render cached candidates data
@@ -1770,7 +2155,66 @@ function renderCachedCandidatesData() {
     const tbody = document.getElementById('candidates-table-body');
     if (!tbody) return false;
 
-    const candidatesArray = dataCache.candidates.data;
+    let candidatesArray = dataCache.candidates.data;
+
+    // Apply global filter to cached data
+    // For candidates: Constituency is master - show all when constituency or show all is selected
+    // Only filter by island when island filter is active
+    if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+        const filterState = window.GlobalFilter.getState();
+
+        // Only apply filter if it's an island filter
+        // For constituency or show all, show all candidates regardless of island
+        if (filterState.type === 'island') {
+            candidatesArray = candidatesArray.filter(candidate => {
+                return window.GlobalFilter.matchesFilter(candidate);
+            });
+            console.log(`[renderCachedCandidatesData] Island filter applied: ${candidatesArray.length} candidates (filter: ${filterState.value})`);
+        } else if (filterState.type === 'constituency') {
+            // Constituency selected - show all candidates (no filtering)
+            console.log(`[renderCachedCandidatesData] Constituency filter active - showing all ${candidatesArray.length} candidates (constituency is master)`);
+        }
+    } else {
+        // No filter active (Show All) - show all candidates
+        console.log(`[renderCachedCandidatesData] No filter active - showing all ${candidatesArray.length} candidates`);
+    }
+
+    // Apply local candidate filters (Island and Position) - these are applied after global filter
+    const islandFilter = document.getElementById('candidate-island-filter').value || '';
+    const positionFilter = document.getElementById('candidate-position-filter').value || '';
+
+    if (islandFilter || positionFilter) {
+        const beforeLocalFilterCount = candidatesArray.length;
+
+        candidatesArray = candidatesArray.filter(candidate => {
+            // Filter by island
+            if (islandFilter) {
+                const candidateIsland = (candidate.island || candidate.constituency || '').trim();
+                if (candidateIsland.toLowerCase() !== islandFilter.toLowerCase()) {
+                    return false;
+                }
+            }
+
+            // Filter by position
+            if (positionFilter) {
+                const candidatePosition = (candidate.position || '').trim();
+                if (candidatePosition.toLowerCase() !== positionFilter.toLowerCase()) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        const afterLocalFilterCount = candidatesArray.length;
+        console.log(`[renderCachedCandidatesData] Local filters applied: ${beforeLocalFilterCount} -> ${afterLocalFilterCount} candidates (island: ${islandFilter || 'all'}, position: ${positionFilter || 'all'})`);
+    }
+
+    if (candidatesArray.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--text-light);">No candidates found</td></tr>';
+        renderPagination('candidates', 0);
+        return true;
+    }
 
     // Pagination
     const state = paginationState.candidates;
@@ -1786,6 +2230,8 @@ function renderCachedCandidatesData() {
         const candidateId = data.candidateId || 'N/A';
 
         const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.dataset.candidateId = item.id;
         row.innerHTML = `
             <td>
                 <div class="table-cell-user">
@@ -1797,22 +2243,33 @@ function renderCachedCandidatesData() {
                 </div>
             </td>
             <td>${data.position || 'N/A'}</td>
-            <td>${data.constituency || 'N/A'}</td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.island || data.constituency || 'N/A'}">${data.island || data.constituency || 'N/A'}</td>
             <td><span class="status-badge ${data.status === 'active' ? 'status-active' : 'status-pending'}">${data.status || 'Pending'}</span></td>
             <td>
                 <div class="table-actions">
-                    <button class="icon-btn" title="Edit" onclick="editCandidate('${item.id}')">
+                    <button class="icon-btn" title="Edit" onclick="event.stopPropagation(); editCandidate('${item.id}')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     </button>
-                    <button class="icon-btn" title="View Details" onclick="viewCandidateDetails('${item.id}')">
+                    <button class="icon-btn" title="View Details" onclick="event.stopPropagation(); if (window.openCandidateDetailsSidePanel) window.openCandidateDetailsSidePanel('${item.id}');">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                     </button>
-                    <button class="icon-btn icon-btn-danger" title="Delete" onclick="deleteCandidate('${item.id}')">
+                    <button class="icon-btn icon-btn-danger" title="Delete" onclick="event.stopPropagation(); deleteCandidate('${item.id}')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
                 </div>
             </td>
         `;
+
+        // Add click handler to row
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('.table-actions')) {
+                return;
+            }
+            if (window.openCandidateDetailsSidePanel) {
+                window.openCandidateDetailsSidePanel(item.id);
+            }
+        });
+
         fragment.appendChild(row);
     });
 
@@ -1821,8 +2278,209 @@ function renderCachedCandidatesData() {
         tbody.textContent = '';
         tbody.appendChild(fragment);
     });
+
+    // Render pagination
+    renderPagination('candidates', candidatesArray.length);
     return true;
 }
+
+// Get candidate positions based on campaign type (same logic as modals.js)
+function getCandidatePositionsForCampaignType() {
+    const campaignType = window.campaignData && window.campaignData.campaignType;
+
+    if (!campaignType) {
+        // If no campaign type, return all positions
+        return [{
+                value: 'WDC Member',
+                label: 'WDC Member'
+            },
+            {
+                value: 'WDC President',
+                label: 'WDC President'
+            },
+            {
+                value: 'Local Council Member',
+                label: 'Local Council Member'
+            },
+            {
+                value: 'Local Council President',
+                label: 'Local Council President'
+            },
+            {
+                value: 'Parliament Member',
+                label: 'Parliament Member'
+            },
+            {
+                value: 'Member of Parliament',
+                label: 'Member of Parliament'
+            },
+            {
+                value: 'President',
+                label: 'President'
+            },
+            {
+                value: 'Vice President',
+                label: 'Vice President'
+            }
+        ];
+    }
+
+    // Map campaign types to positions
+    const positionMap = {
+        'WDC': [{
+                value: 'WDC Member',
+                label: 'WDC Member'
+            },
+            {
+                value: 'WDC President',
+                label: 'WDC President'
+            },
+            {
+                value: 'Local Council Member',
+                label: 'Local Council Member'
+            },
+            {
+                value: 'Local Council President',
+                label: 'Local Council President'
+            }
+        ],
+        'Parliament': [{
+                value: 'Parliament Member',
+                label: 'Parliament Member'
+            },
+            {
+                value: 'Member of Parliament',
+                label: 'Member of Parliament'
+            }
+        ],
+        'Presidential': [{
+                value: 'President',
+                label: 'President'
+            },
+            {
+                value: 'Vice President',
+                label: 'Vice President'
+            }
+        ]
+    };
+
+    return positionMap[campaignType] || positionMap['WDC']; // Default to WDC if unknown
+}
+
+// Setup candidate filters
+function setupCandidateFilters() {
+    // Populate island dropdown
+    const islandFilter = document.getElementById('candidate-island-filter');
+    if (islandFilter) {
+        // Clear existing options except the first one
+        islandFilter.innerHTML = '<option value="">All Islands</option>';
+
+        // Get constituency from campaign data
+        const constituency = window.campaignData && window.campaignData.constituency;
+
+        if (constituency && window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+            const islands = window.getIslandsForConstituency(constituency);
+
+            if (islands && islands.length > 0) {
+                islands.forEach(island => {
+                    const option = document.createElement('option');
+                    option.value = island;
+                    option.textContent = island;
+                    islandFilter.appendChild(option);
+                });
+            }
+        }
+
+        // Add change event listener
+        if (!islandFilter.dataset.listenerAttached) {
+            islandFilter.dataset.listenerAttached = 'true';
+            islandFilter.addEventListener('change', function() {
+                updateCandidateFilterVisibility();
+                loadCandidatesData(true);
+            });
+        }
+    }
+
+    // Setup position filter
+    const positionFilter = document.getElementById('candidate-position-filter');
+    if (positionFilter) {
+        // Clear existing options except the first one
+        const firstOption = positionFilter.querySelector('option[value=""]');
+        positionFilter.innerHTML = '';
+        if (firstOption) {
+            positionFilter.appendChild(firstOption);
+        } else {
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'All Positions';
+            positionFilter.appendChild(defaultOption);
+        }
+
+        // Get positions for current campaign type
+        const positions = getCandidatePositionsForCampaignType();
+
+        positions.forEach(position => {
+            const option = document.createElement('option');
+            option.value = position.value;
+            option.textContent = position.label;
+            positionFilter.appendChild(option);
+        });
+
+        // Add change event listener
+        if (!positionFilter.dataset.listenerAttached) {
+            positionFilter.dataset.listenerAttached = 'true';
+            positionFilter.addEventListener('change', function() {
+                updateCandidateFilterVisibility();
+                loadCandidatesData(true);
+            });
+        }
+    }
+
+    // Setup clear filters button
+    const clearBtn = document.getElementById('clear-candidate-filters-btn');
+    if (clearBtn && !clearBtn.dataset.listenerAttached) {
+        clearBtn.dataset.listenerAttached = 'true';
+        clearBtn.addEventListener('click', clearCandidateFilters);
+    }
+
+    // Update filter visibility
+    updateCandidateFilterVisibility();
+}
+
+// Update candidate filter visibility (show/hide clear button)
+function updateCandidateFilterVisibility() {
+    const islandFilter = document.getElementById('candidate-island-filter');
+    const positionFilter = document.getElementById('candidate-position-filter');
+    const clearBtn = document.getElementById('clear-candidate-filters-btn');
+
+    if (clearBtn) {
+        const hasActiveFilters = (islandFilter && islandFilter.value) || (positionFilter && positionFilter.value);
+        clearBtn.style.display = hasActiveFilters ? 'flex' : 'none';
+        // Ensure button maintains proper styling when shown
+        if (hasActiveFilters) {
+            clearBtn.style.whiteSpace = 'nowrap';
+        }
+    }
+}
+
+// Clear candidate filters
+function clearCandidateFilters() {
+    const islandFilter = document.getElementById('candidate-island-filter');
+    const positionFilter = document.getElementById('candidate-position-filter');
+
+    if (islandFilter) {
+        islandFilter.value = '';
+    }
+    if (positionFilter) {
+        positionFilter.value = '';
+    }
+
+    updateCandidateFilterVisibility();
+    loadCandidatesData(true);
+}
+
+// Expose function to window
+window.clearCandidateFilters = clearCandidateFilters;
 
 // Load voters data
 // Universal data cache system for all tables
@@ -1835,12 +2493,14 @@ const dataCache = {
     candidates: {
         data: null,
         timestamp: null,
-        userEmail: null
+        userEmail: null,
+        filterState: null
     },
     events: {
         data: null,
         timestamp: null,
-        userEmail: null
+        userEmail: null,
+        filterState: null
     },
     calls: {
         data: null,
@@ -2290,10 +2950,25 @@ const pendingImageLookups = new Map();
 let imageIndex = null;
 let imageIndexLoading = null;
 
+// Helper function to check if voter images are enabled
+function areVoterImagesEnabled() {
+    const savedSetting = localStorage.getItem('voterImagesEnabled');
+    // Default to true (enabled) if not set
+    return savedSetting === null || savedSetting === 'true';
+}
+
+// Make it globally available
+window.areVoterImagesEnabled = areVoterImagesEnabled;
+
 // Function to get voter image URL, checking images folder first based on ID card number
 // Returns the best available image URL (existing imageUrl takes priority, then images folder)
 // This is a synchronous function that returns immediately (uses cache or returns empty for async lookup)
 function getVoterImageUrl(voterData, idCardNumber = null) {
+    // Check if voter images are enabled
+    if (!areVoterImagesEnabled()) {
+        return '';
+    }
+
     // Get existing image URL from voter data first (highest priority)
     if (!voterData) {
         return '';
@@ -2380,6 +3055,11 @@ async function checkImageExists(url) {
 // Async function to lookup image from images folder by ID card number
 // This calls the server endpoint to find matching images, with fallback for static hosting
 async function lookupImageFromFolder(idCardNumber) {
+    // Check if voter images are enabled
+    if (!areVoterImagesEnabled()) {
+        return null;
+    }
+
     if (!idCardNumber || !idCardNumber.trim()) {
         return null;
     }
@@ -2493,6 +3173,11 @@ async function lookupImageFromFolder(idCardNumber) {
 // Function to try loading image from images folder when main image fails
 // This is called from image onerror handlers
 async function tryLoadImageFromFolder(imgElement, idCardNumber) {
+    // Check if voter images are enabled
+    if (!areVoterImagesEnabled()) {
+        return false;
+    }
+
     if (!idCardNumber || !idCardNumber.trim() || !imgElement) {
         return false;
     }
@@ -3143,7 +3828,7 @@ window.startPollingFallback = startPollingFallback;
 window.stopPollingFallback = stopPollingFallback;
 
 // Make functions globally available
-// Show sync notification when data changes
+// Show sync notification when data changes (bottom-right toast notification)
 function showSyncNotification(tableType, changeCount) {
     // Create or get notification container
     let notificationContainer = document.getElementById('sync-notification-container');
@@ -3152,13 +3837,14 @@ function showSyncNotification(tableType, changeCount) {
         notificationContainer.id = 'sync-notification-container';
         notificationContainer.style.cssText = `
             position: fixed;
-            top: 80px;
-            right: 20px;
+            bottom: 20px;
+            left: 20px;
             z-index: 10000;
             display: flex;
             flex-direction: column;
             gap: 10px;
             pointer-events: none;
+            max-width: 350px;
         `;
         document.body.appendChild(notificationContainer);
     }
@@ -3167,16 +3853,18 @@ function showSyncNotification(tableType, changeCount) {
     const notification = document.createElement('div');
     notification.style.cssText = `
         background: var(--white);
-        border: 2px solid var(--primary-color);
-        border-radius: 12px;
-        padding: 12px 16px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-left: 4px solid var(--primary-color);
+        border-radius: 8px;
+        padding: 14px 16px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.1);
         display: flex;
         align-items: center;
         gap: 12px;
-        min-width: 250px;
-        animation: slideInRight 0.3s ease-out;
+        min-width: 280px;
+        max-width: 350px;
+        animation: slideInBottomLeft 0.3s ease-out;
         pointer-events: auto;
+        transition: all 0.3s ease;
     `;
 
     const tableNames = {
@@ -3198,49 +3886,86 @@ function showSyncNotification(tableType, changeCount) {
     }
 
     notification.innerHTML = `
-        <div style="width: 8px; height: 8px; background: var(--primary-color); border-radius: 50%; animation: pulse 2s infinite;"></div>
-        <div style="flex: 1;">
-            <div style="font-size: 13px; font-weight: 600; color: var(--text-color);">Data Synced</div>
-            <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">${message}</div>
+        <div style="width: 10px; height: 10px; background: var(--primary-color); border-radius: 50%; flex-shrink: 0; animation: pulse 2s infinite;"></div>
+        <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-color); margin-bottom: 2px;">Data Synced</div>
+            <div style="font-size: 12px; color: var(--text-light); line-height: 1.4;">${message}</div>
         </div>
+        <button class="sync-notification-close" style="background: none; border: none; color: var(--text-light); cursor: pointer; padding: 4px; margin-left: 8px; opacity: 0.6; transition: opacity 0.2s; flex-shrink: 0;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'" onclick="this.parentElement.remove()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
     `;
 
     notificationContainer.appendChild(notification);
 
-    // Remove after 3 seconds
+    // Hover effect
+    notification.addEventListener('mouseenter', () => {
+        notification.style.transform = 'translateY(-2px)';
+        notification.style.boxShadow = '0 6px 20px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.15)';
+    });
+    notification.addEventListener('mouseleave', () => {
+        notification.style.transform = 'translateY(0)';
+        notification.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.1)';
+    });
+
+    // Remove after 4 seconds (increased from 3)
     setTimeout(() => {
-        notification.style.animation = 'slideOutRight 0.3s ease-out';
+        notification.style.animation = 'slideOutBottomRight 0.3s ease-out';
+        notification.style.opacity = '0';
         setTimeout(() => {
             if (notification.parentNode) {
                 notification.parentNode.removeChild(notification);
             }
         }, 300);
-    }, 3000);
+    }, 4000);
 }
 
-// Add CSS animations for sync notifications
+// Add CSS animations for sync notifications (bottom-right)
 if (!document.getElementById('sync-notification-styles')) {
     const style = document.createElement('style');
     style.id = 'sync-notification-styles';
     style.textContent = `
-        @keyframes slideInRight {
+        @keyframes slideInBottomRight {
             from {
-                transform: translateX(100%);
+                transform: translateX(100%) translateY(20px);
                 opacity: 0;
             }
             to {
-                transform: translateX(0);
+                transform: translateX(0) translateY(0);
                 opacity: 1;
             }
         }
-        @keyframes slideOutRight {
+        @keyframes slideOutBottomRight {
             from {
-                transform: translateX(0);
+                transform: translateX(0) translateY(0);
                 opacity: 1;
             }
             to {
-                transform: translateX(100%);
+                transform: translateX(100%) translateY(20px);
                 opacity: 0;
+            }
+        }
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        @media (max-width: 768px) {
+            #sync-notification-container {
+                bottom: 10px !important;
+                right: 10px !important;
+                left: 10px !important;
+                max-width: calc(100% - 20px) !important;
+            }
+            #sync-notification-container > div {
+                min-width: auto !important;
+                max-width: 100% !important;
             }
         }
         @keyframes pulse {
@@ -3269,6 +3994,25 @@ function isCacheValid(cacheType, forceRefresh = false) {
     if (cache.userEmail !== window.userEmail) return false;
     if (!cache.timestamp) return false;
 
+    // Check if GlobalFilter has changed since cache was created
+    if (window.GlobalFilter && cache.filterState) {
+        const currentFilterState = window.GlobalFilter.getState();
+        const cachedFilterState = cache.filterState;
+        // If filter state changed, cache is invalid
+        if (currentFilterState.type !== cachedFilterState.type ||
+            currentFilterState.value !== cachedFilterState.value) {
+            console.log(`[isCacheValid] Cache invalidated due to filter change for ${cacheType}`);
+            return false;
+        }
+    } else if (window.GlobalFilter) {
+        // If GlobalFilter exists but cache doesn't have filterState, invalidate
+        const currentFilterState = window.GlobalFilter.getState();
+        if (currentFilterState.isActive) {
+            console.log(`[isCacheValid] Cache invalidated - filter active but cache missing filterState for ${cacheType}`);
+            return false;
+        }
+    }
+
     const now = Date.now();
     const cacheAge = now - cache.timestamp;
     return cacheAge < dataCache.CACHE_DURATION;
@@ -3285,6 +4029,7 @@ function clearCache(cacheType) {
         dataCache[cacheType].data = null;
         dataCache[cacheType].timestamp = null;
         dataCache[cacheType].userEmail = null;
+        dataCache[cacheType].filterState = null;
     }
 }
 
@@ -3295,6 +4040,7 @@ function clearAllCaches() {
             dataCache[key].data = null;
             dataCache[key].timestamp = null;
             dataCache[key].userEmail = null;
+            dataCache[key].filterState = null;
         }
     });
 }
@@ -3327,10 +4073,21 @@ function renderCachedVotersData() {
         return false;
     }
 
+    // Apply global filter to cached data
+    let filteredDocs = allDocs;
+    if (window.FilterUtils) {
+        filteredDocs = window.FilterUtils.applyFilterToArray(allDocs);
+    }
+
     // Safety check: if stats is missing, calculate it from the data
+    // Recalculate stats based on filtered data if global filter is active
     let safeStats = stats;
-    if (!safeStats || typeof safeStats !== 'object') {
-        console.warn('[renderCachedVotersData] Stats missing from cache, calculating from data...');
+    if (!safeStats || typeof safeStats !== 'object' || (window.GlobalFilter && window.GlobalFilter.getState().isActive)) {
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            console.log('[renderCachedVotersData] Recalculating stats based on filtered data...');
+        } else {
+            console.warn('[renderCachedVotersData] Stats missing from cache, calculating from data...');
+        }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -3339,8 +4096,10 @@ function renderCachedVotersData() {
         let verified = 0;
         let pending = 0;
 
-        if (allDocs && Array.isArray(allDocs)) {
-            allDocs.forEach(({
+        // Calculate stats from filtered data (or allDocs if no filter)
+        const dataToUse = (window.GlobalFilter && window.GlobalFilter.getState().isActive) ? filteredDocs : allDocs;
+        if (dataToUse && Array.isArray(dataToUse)) {
+            dataToUse.forEach(({
                 data
             }) => {
                 total++;
@@ -3366,9 +4125,8 @@ function renderCachedVotersData() {
     const searchInput = document.getElementById('voter-search');
     const searchTerm = (searchInput && searchInput.value) ? searchInput.value.toLowerCase().trim() : '';
 
-    let filteredDocs = allDocs || [];
-    if (searchTerm && Array.isArray(allDocs)) {
-        filteredDocs = allDocs.filter(({
+    if (searchTerm && Array.isArray(filteredDocs)) {
+        filteredDocs = filteredDocs.filter(({
             data
         }) => {
             const name = (data.name || '').toLowerCase();
@@ -3411,7 +4169,7 @@ function renderCachedVotersData() {
 
     // Render table
     if (filteredDocs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">' +
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-light);">' +
             (searchTerm ? 'No voters found matching your search' : 'No voters registered yet') + '</td></tr>';
         renderPagination('voters', filteredDocs.length);
         return true;
@@ -3456,7 +4214,14 @@ function renderCachedVotersData() {
         }
 
         const initials = data.name ? data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'NA';
-        const idNumber = data.idNumber || data.voterId || id;
+
+        // Use actual ID number fields, avoid using doc.id as fallback
+        let idNumber = data.idNumber || data.voterId || 'N/A';
+        // Ensure we never use document IDs - if idNumber looks like a Firestore ID, set to N/A
+        if (idNumber && idNumber !== 'N/A' && idNumber.length === 20 && /^[A-Za-z0-9]{20}$/.test(idNumber)) {
+            idNumber = 'N/A'; // Likely a Firestore document ID, don't use it
+        }
+
         const permanentAddress = (data.permanentAddress && data.permanentAddress.trim()) || (data.address && data.address.trim()) || 'N/A';
         const currentLocation = (data.currentLocation && data.currentLocation.trim()) || (data.location && data.location.trim()) || 'N/A';
 
@@ -3478,15 +4243,31 @@ function renderCachedVotersData() {
                     <strong>${data.name || 'N/A'}</strong>
                 </div>
             </td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.constituency || 'N/A'}">${data.constituency || 'N/A'}</td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.island || 'N/A'}">${data.island || 'N/A'}</td>
             <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${permanentAddress}">${permanentAddress}</td>
             <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${currentLocation}">${currentLocation}</td>
             <td>
-                <button class="icon-btn" title="View Details" onclick="viewVoterDetails('${id}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                </button>
+                <div class="table-actions" style="display: flex; gap: 6px; align-items: center;">
+                    <button class="icon-btn" title="View Details" onclick="viewVoterDetails('${id}')" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-color); border-radius: 8px; background: white; color: var(--text-color); transition: all 0.2s ease;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" title="Edit Voter" onclick="editVoter('${id}')" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: linear-gradient(135deg, #6fc1da 0%, #8dd4e8 100%); color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 6px rgba(111, 193, 218, 0.3);" onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 10px rgba(111, 193, 218, 0.4)'" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 6px rgba(111, 193, 218, 0.3)'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" title="Delete Voter" onclick="deleteVoter('${id}')" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: #dc2626; color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);" onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 10px rgba(220, 38, 38, 0.4)'" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 6px rgba(220, 38, 38, 0.3)'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
             </td>
         `;
         fragment.appendChild(row);
@@ -3670,7 +4451,7 @@ async function loadVotersData(forceRefresh = false) {
             }
         } catch (queryError) {
             console.error('Error querying voters:', queryError);
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading voters. Please check console for details.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading voters. Please check console for details.</td></tr>';
             // Mark voters as complete even on error
             if (window.updateComponentProgress) {
                 window.updateComponentProgress('voters', 100);
@@ -3679,7 +4460,7 @@ async function loadVotersData(forceRefresh = false) {
         }
 
         // Filter to ensure we only show voters matching user email (in case of data inconsistency)
-        const filteredDocs = snapshot.docs.filter(doc => {
+        let filteredDocs = snapshot.docs.filter(doc => {
             const data = doc.data();
             const matches = data.email === window.userEmail || data.campaignEmail === window.userEmail;
             if (!matches && snapshot.docs.length > 0) {
@@ -3695,6 +4476,34 @@ async function loadVotersData(forceRefresh = false) {
             }
             return matches;
         });
+
+        // Apply global filter
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            const filterState = window.GlobalFilter.getState();
+            const beforeFilterCount = filteredDocs.length;
+
+            filteredDocs = filteredDocs.filter(doc => {
+                const data = doc.data();
+                const matches = window.GlobalFilter.matchesFilter(data);
+
+                // Debug logging for constituency filter (only log first few)
+                if (!matches && filterState.type === 'constituency' && Math.random() < 0.05) {
+                    console.log('[loadVotersData] Voter filtered out by constituency:', {
+                        voterName: data.name,
+                        voterConstituency: data.constituency || data.voterConstituency || 'N/A',
+                        filterConstituency: filterState.value,
+                        allData: data
+                    });
+                }
+
+                return matches;
+            });
+
+            const afterFilterCount = filteredDocs.length;
+            if (filterState.type === 'constituency') {
+                console.log(`[loadVotersData] Constituency filter applied: ${beforeFilterCount} -> ${afterFilterCount} voters (filter: ${filterState.value})`);
+            }
+        }
 
         console.log(`[loadVotersData] Processing ${filteredDocs.length} voters...`);
 
@@ -3730,7 +4539,7 @@ async function loadVotersData(forceRefresh = false) {
         if (pendingEl) pendingEl.textContent = pending;
 
         if (filteredDocs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">No voters registered yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-light);">No voters registered yet</td></tr>';
             renderPagination('voters', 0);
             // Mark voters as complete even if empty
             if (window.updateComponentProgress) {
@@ -3844,6 +4653,8 @@ async function loadVotersData(forceRefresh = false) {
 
             // Create row element
             const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.dataset.voterId = doc.id;
             row.innerHTML = `
                 <td style="text-align: center; color: var(--text-light); font-weight: 600;">${rowNumber}</td>
                 <td>
@@ -3857,17 +4668,44 @@ async function loadVotersData(forceRefresh = false) {
                         <strong>${data.name || 'N/A'}</strong>
                     </div>
                 </td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.constituency || 'N/A'}">${data.constituency || 'N/A'}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.island || 'N/A'}">${data.island || 'N/A'}</td>
                 <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${permanentAddress}">${permanentAddress}</td>
                 <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${currentLocation}">${currentLocation}</td>
                 <td>
-                    <button class="icon-btn" title="View Details" onclick="viewVoterDetails('${doc.id}')">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                    </button>
+                    <div class="table-actions" style="display: flex; gap: 6px; align-items: center;">
+                        <button class="icon-btn" title="View Details" onclick="event.stopPropagation(); if (window.openVoterDetailsSidePanel) window.openVoterDetailsSidePanel('${doc.id}');" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-color); border-radius: 8px; background: white; color: var(--text-color); transition: all 0.2s ease;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                        <button class="icon-btn" title="Edit Voter" onclick="editVoter('${doc.id}')" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: linear-gradient(135deg, #6fc1da 0%, #8dd4e8 100%); color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 6px rgba(111, 193, 218, 0.3);" onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 10px rgba(111, 193, 218, 0.4)'" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 6px rgba(111, 193, 218, 0.3)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
+                        <button class="icon-btn" title="Delete Voter" onclick="deleteVoter('${doc.id}')" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: #dc2626; color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);" onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 10px rgba(220, 38, 38, 0.4)'" onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 6px rgba(220, 38, 38, 0.3)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </td>
             `;
+
+            // Add click handler to row
+            row.addEventListener('click', function(e) {
+                // Don't trigger if clicking on the actions column
+                if (e.target.closest('.table-actions')) {
+                    return;
+                }
+                if (window.openVoterDetailsSidePanel) {
+                    window.openVoterDetailsSidePanel(doc.id);
+                }
+            });
 
             fragment.appendChild(row);
 
@@ -3940,12 +4778,18 @@ async function loadVotersData(forceRefresh = false) {
         };
         voterDataCache.timestamp = Date.now();
         voterDataCache.userEmail = window.userEmail;
+        // Store current filter state to detect changes
+        if (window.GlobalFilter) {
+            voterDataCache.filterState = {
+                ...window.GlobalFilter.getState()
+            };
+        }
         console.log('[loadVotersData] Data cached for future use');
 
         // Loading indicator is already replaced by actual table content
     } catch (error) {
         console.error('Error loading voters:', error);
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading voters</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading voters</td></tr>';
     }
 }
 
@@ -3953,6 +4797,7 @@ async function loadVotersData(forceRefresh = false) {
 function clearVoterCache() {
     voterDataCache.data = null;
     voterDataCache.timestamp = null;
+    voterDataCache.filterState = null;
     console.log('[clearVoterCache] Voter cache cleared');
 }
 
@@ -3960,6 +4805,14 @@ function clearVoterCache() {
 window.clearVoterCache = clearVoterCache;
 window.clearCache = clearCache;
 window.clearAllCaches = clearAllCaches;
+
+// Expose render cached functions globally for instant filter updates
+window.renderCachedVotersData = renderCachedVotersData;
+window.renderCachedCallsData = renderCachedCallsData;
+window.renderCachedPledgesData = renderCachedPledgesData;
+window.renderCachedCandidatesData = renderCachedCandidatesData;
+window.renderCachedEventsData = renderCachedEventsData;
+window.renderCachedAgentsData = renderCachedAgentsData;
 
 // Load events data
 async function loadEventsData(forceRefresh = false) {
@@ -4029,19 +4882,64 @@ async function loadEventsData(forceRefresh = false) {
             return aDate - bDate; // Ascending order
         });
 
+        // Apply global filter
+        // For events: Constituency is master - show all when constituency or show all is selected
+        // Only filter by island when island filter is active
+        let filteredEventsArray = eventsArray;
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            const filterState = window.GlobalFilter.getState();
+
+            // Only apply filter if it's an island filter
+            // For constituency or show all, show all events regardless of island
+            if (filterState.type === 'island') {
+                const beforeFilterCount = filteredEventsArray.length;
+
+                filteredEventsArray = filteredEventsArray.filter(event => {
+                    const matches = window.GlobalFilter.matchesFilter(event);
+
+                    // Debug logging for island filter (only log first few)
+                    if (!matches && Math.random() < 0.05) {
+                        console.log('[loadEventsData] Event filtered out by island:', {
+                            eventName: event.eventName,
+                            eventIsland: event.island || 'N/A',
+                            filterIsland: filterState.value,
+                            allData: event
+                        });
+                    }
+
+                    return matches;
+                });
+
+                const afterFilterCount = filteredEventsArray.length;
+                console.log(`[loadEventsData] Island filter applied: ${beforeFilterCount} -> ${afterFilterCount} events (filter: ${filterState.value})`);
+            } else if (filterState.type === 'constituency') {
+                // Constituency selected - show all events (no filtering)
+                console.log(`[loadEventsData] Constituency filter active - showing all ${filteredEventsArray.length} events (constituency is master)`);
+            }
+        } else {
+            // No filter active (Show All) - show all events
+            console.log(`[loadEventsData] No filter active - showing all ${filteredEventsArray.length} events`);
+        }
+
         // Store in cache
-        dataCache.events.data = eventsArray;
+        dataCache.events.data = filteredEventsArray;
         dataCache.events.timestamp = Date.now();
         dataCache.events.userEmail = window.userEmail;
+        // Store current filter state to detect changes
+        if (window.GlobalFilter) {
+            dataCache.events.filterState = {
+                ...window.GlobalFilter.getState()
+            };
+        }
 
-        if (eventsArray.length === 0) {
+        if (filteredEventsArray.length === 0) {
             grid.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light); grid-column: 1 / -1;"><p>No events scheduled yet</p></div>';
             return;
         }
 
         // Use DocumentFragment for efficient DOM updates
         const fragment = document.createDocumentFragment();
-        eventsArray.forEach(event => {
+        filteredEventsArray.forEach(event => {
             // Use event data directly from array, not doc.data()
             const data = event;
             const eventDate = data.eventDate ? (data.eventDate.toDate ? data.eventDate.toDate() : new Date(data.eventDate)) : new Date();
@@ -4059,6 +4957,8 @@ async function loadEventsData(forceRefresh = false) {
 
             const eventCard = document.createElement('div');
             eventCard.className = 'event-card';
+            eventCard.style.cursor = 'pointer';
+            eventCard.dataset.eventId = data.id;
             eventCard.innerHTML = `
                 <div class="event-date">
                     <span class="event-day">${day}</span>
@@ -4073,10 +4973,35 @@ async function loadEventsData(forceRefresh = false) {
                     <p class="event-time">${startTime} - ${endTime}</p>
                     <div class="event-actions">
                         <span class="event-attendees">Expected: ${expectedAttendees}+</span>
-                        <button class="icon-btn-sm" onclick="viewEventDetails('${data.id}')">View</button>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="icon-btn-sm" onclick="event.stopPropagation(); if (window.openEventDetailsSidePanel) window.openEventDetailsSidePanel('${data.id}');" title="View Details">View</button>
+                            <button class="icon-btn-sm" onclick="closeModal(); setTimeout(() => { if (window.openModal) window.openModal('event', '${data.id}'); }, 100);" title="Edit Event" style="color: var(--primary-color);">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </button>
+                            <button class="icon-btn-sm" onclick="deleteEvent('${data.id}')" title="Delete Event" style="color: var(--danger-color);">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
+
+            // Add click handler to event card
+            eventCard.addEventListener('click', function(e) {
+                if (e.target.closest('.event-actions') || e.target.closest('button')) {
+                    return;
+                }
+                if (window.openEventDetailsSidePanel) {
+                    window.openEventDetailsSidePanel(data.id);
+                }
+            });
+
             fragment.appendChild(eventCard);
         });
 
@@ -4474,7 +5399,11 @@ function renderCachedEventsData() {
     const grid = document.getElementById('events-grid');
     if (!grid) return false;
 
-    const eventsArray = dataCache.events.data;
+    let eventsArray = dataCache.events.data;
+    // Apply global filter
+    if (window.FilterUtils) {
+        eventsArray = window.FilterUtils.applyFilterToArray(eventsArray);
+    }
     const fragment = document.createDocumentFragment();
 
     eventsArray.forEach(event => {
@@ -4519,6 +5448,34 @@ function renderCachedEventsData() {
         grid.appendChild(fragment);
     });
     return true;
+}
+
+// Helper function to show Firestore index information
+function showCallsIndexInfo() {
+    if (window._callsIndexInfoLogged) return;
+    window._callsIndexInfoLogged = true;
+    console.log('%c📋 REQUIRED FIRESTORE INDEXES FOR CALLS', 'font-size: 16px; font-weight: bold; color: #6fc1da; padding: 10px; background: #f0f9fb; border-radius: 4px;');
+    console.log('');
+    console.log('%cIndex 1: Calls by campaignEmail', 'font-size: 14px; font-weight: bold; color: #059669;');
+    console.table({
+        'Collection': 'calls',
+        'Field 1': 'campaignEmail (Ascending)',
+        'Field 2': 'callDate (Descending)'
+    });
+    console.log('%cIndex 2: Calls by email', 'font-size: 14px; font-weight: bold; color: #059669;');
+    console.table({
+        'Collection': 'calls',
+        'Field 1': 'email (Ascending)',
+        'Field 2': 'callDate (Descending)'
+    });
+    console.log('');
+    console.log('%c📝 How to create:', 'font-size: 14px; font-weight: bold; color: #0284c7;');
+    console.log('1. Go to: https://console.firebase.google.com/');
+    console.log('2. Select your project → Firestore Database → Indexes tab');
+    console.log('3. Click "Create Index"');
+    console.log('4. Configure each index as shown in the tables above');
+    console.log('5. Wait 2-5 minutes for indexes to build');
+    console.log('');
 }
 
 // Load calls data
@@ -4572,6 +5529,7 @@ async function loadCallsData(forceRefresh = false) {
                 // If index missing, query without orderBy
                 if (queryError1.code === 'failed-precondition' && queryError1.message.includes('index')) {
                     console.warn('Calls index missing for campaignEmail, querying without orderBy');
+                    if (typeof showCallsIndexInfo === 'function') showCallsIndexInfo();
                     const fallbackQuery1 = query(collection(window.db, 'calls'), where('campaignEmail', '==', window.userEmail));
                     snapshot1 = await getDocs(fallbackQuery1);
                     snapshot1.forEach(doc => {
@@ -4600,6 +5558,7 @@ async function loadCallsData(forceRefresh = false) {
                 // If index missing, query without orderBy
                 if (queryError2.code === 'failed-precondition' && queryError2.message.includes('index')) {
                     console.warn('Calls index missing for email, querying without orderBy');
+                    if (typeof showCallsIndexInfo === 'function') showCallsIndexInfo();
                     const fallbackQuery2 = query(collection(window.db, 'calls'), where('email', '==', window.userEmail));
                     snapshot2 = await getDocs(fallbackQuery2);
                     snapshot2.forEach(doc => {
@@ -4628,7 +5587,12 @@ async function loadCallsData(forceRefresh = false) {
             pending = 0;
 
         // Convert Map to array for processing
-        const callsArray = Array.from(allCalls.values());
+        let callsArray = Array.from(allCalls.values());
+
+        // Apply global filter
+        if (window.FilterUtils) {
+            callsArray = window.FilterUtils.applyFilterToArray(callsArray);
+        }
 
         // Process statistics
         callsArray.forEach(callData => {
@@ -4665,7 +5629,7 @@ async function loadCallsData(forceRefresh = false) {
         if (successEl) successEl.textContent = `${successRate}%`;
 
         if (callsArray.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">No calls recorded yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-light);">No calls recorded yet</td></tr>';
             renderPagination('calls', 0);
             return;
         }
@@ -4696,17 +5660,48 @@ async function loadCallsData(forceRefresh = false) {
             const statusClass = status === 'answered' ? 'status-success' : 'status-pending';
             const statusText = status === 'answered' ? 'Answered' : (status === 'no-answer' ? 'No Answer' : (status === 'busy' ? 'Busy' : 'Pending'));
 
+            const constituency = data.constituency || data.voterConstituency || 'N/A';
+            const island = data.island || data.voterIsland || 'N/A';
+
             const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.dataset.callId = call.id;
             row.innerHTML = `
                 <td>${voterName}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${constituency}">${constituency}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${island}">${island}</td>
                 <td>${phone}</td>
                 <td>${caller}</td>
-                <td>${dateStr}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                 <td>
-                    <button class="icon-btn" title="View Details" onclick="viewCallDetails('${call.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+                    <div class="table-actions">
+                        <button class="icon-btn" title="Edit Call" onclick="event.stopPropagation(); closeModal(); setTimeout(() => { if (window.openModal) window.openModal('call', '${call.id}'); }, 100);">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
+                        <button class="icon-btn" title="Delete Call" onclick="event.stopPropagation(); if (window.deleteCall) window.deleteCall('${call.id}');" style="color: var(--danger-color);">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </td>
             `;
+
+            // Add click handler to row
+            row.addEventListener('click', function(e) {
+                // Don't trigger if clicking on the actions column
+                if (e.target.closest('.table-actions')) {
+                    return;
+                }
+                if (window.openCallDetailsSidePanel) {
+                    window.openCallDetailsSidePanel(call.id);
+                }
+            });
+
             fragment.appendChild(row);
         });
 
@@ -4714,12 +5709,44 @@ async function loadCallsData(forceRefresh = false) {
         requestAnimationFrame(() => {
             tbody.textContent = '';
             tbody.appendChild(fragment);
+
+            // Setup close button, maximize button, and overlay handlers
+            setTimeout(() => {
+                const closeBtn = document.getElementById('close-call-side-panel');
+                const maximizeBtn = document.getElementById('maximize-call-side-panel');
+                const overlay = document.getElementById('call-details-side-panel-overlay');
+                if (closeBtn && !closeBtn.dataset.listenerAttached) {
+                    closeBtn.dataset.listenerAttached = 'true';
+                    closeBtn.addEventListener('click', function() {
+                        if (window.closeCallDetailsSidePanel) {
+                            window.closeCallDetailsSidePanel();
+                        }
+                    });
+                }
+                if (maximizeBtn && !maximizeBtn.dataset.listenerAttached) {
+                    maximizeBtn.dataset.listenerAttached = 'true';
+                    maximizeBtn.addEventListener('click', function() {
+                        if (window.toggleSidePanelMaximize) {
+                            window.toggleSidePanelMaximize('call-details-side-panel', 'maximize-call-side-panel');
+                        }
+                    });
+                }
+                if (overlay && !overlay.dataset.listenerAttached) {
+                    overlay.dataset.listenerAttached = 'true';
+                    overlay.addEventListener('click', function() {
+                        if (window.closeCallDetailsSidePanel) {
+                            window.closeCallDetailsSidePanel();
+                        }
+                    });
+                }
+            }, 100);
+
             // Render pagination
             renderPagination('calls', callsArray.length);
         });
     } catch (error) {
         console.error('Error loading calls:', error);
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading calls</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-light);">Error loading calls</td></tr>';
         renderPagination('calls', 0);
     }
 }
@@ -4740,7 +5767,22 @@ async function setupPledgeStatisticsListener() {
 
         window.pledgesStatsListener = onSnapshot(pledgesQuery,
             (snapshot) => {
-                updatePledgeStatistics(snapshot);
+                // Apply global filter to snapshot before updating statistics
+                const filteredSnapshot = {
+                    forEach: (callback) => {
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+                                if (window.GlobalFilter.matchesFilter(data)) {
+                                    callback(doc);
+                                }
+                            } else {
+                                callback(doc);
+                            }
+                        });
+                    }
+                };
+                updatePledgeStatistics(filteredSnapshot);
             },
             (error) => {
                 console.warn('Error listening to pledge statistics:', error);
@@ -4764,8 +5806,14 @@ function updatePledgeStatistics(snapshot) {
         total = 0;
 
     snapshot.forEach(doc => {
-        total++;
         const data = doc.data();
+        // Apply global filter (if snapshot is already filtered, this will be a no-op)
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            if (!window.GlobalFilter.matchesFilter(data)) {
+                return; // Skip this pledge if it doesn't match filter
+            }
+        }
+        total++;
         if (data.pledge === 'yes') yes++;
         else if (data.pledge === 'no' || data.pledge === 'negative') no++;
         else undecided++;
@@ -4928,11 +5976,8 @@ async function loadPledgesData(forceRefresh = false) {
 
         console.log('[loadPledgesData] Processing', snapshot.size, 'pledges');
 
-        // Pagination - slice docs before processing
+        // Pagination state
         const state = paginationState.pledges;
-        const startIndex = (state.currentPage - 1) * state.recordsPerPage;
-        const endIndex = startIndex + state.recordsPerPage;
-        const paginatedDocs = snapshot.docs.slice(startIndex, endIndex);
 
         // Batch fetch all voter data at once (much faster than individual fetches)
         const voterIds = new Set();
@@ -4981,8 +6026,18 @@ async function loadPledgesData(forceRefresh = false) {
         let undecided = 0;
         let total = 0;
 
-        // Calculate stats from all pledges
-        snapshot.docs.forEach(pledgeDoc => {
+        // Apply global filter to pledges before processing
+        let filteredPledgeDocs = snapshot.docs;
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            filteredPledgeDocs = snapshot.docs.filter(pledgeDoc => {
+                const pledgeData = pledgeDoc.data();
+                // Check if pledge matches filter (using constituency/island from pledge or voter data)
+                return window.GlobalFilter.matchesFilter(pledgeData);
+            });
+        }
+
+        // Calculate stats from filtered pledges
+        filteredPledgeDocs.forEach(pledgeDoc => {
             const pledgeData = pledgeDoc.data();
             total++;
             if (pledgeData.pledge === 'yes') {
@@ -4994,12 +6049,24 @@ async function loadPledgesData(forceRefresh = false) {
             }
         });
 
+        // Update pagination to use filtered docs
+        const filteredStartIndex = (state.currentPage - 1) * state.recordsPerPage;
+        const filteredEndIndex = filteredStartIndex + state.recordsPerPage;
+        const paginatedDocs = filteredPledgeDocs.slice(filteredStartIndex, filteredEndIndex);
+
         for (const pledgeDoc of paginatedDocs) {
             const pledgeData = pledgeDoc.data();
             const voterData = pledgeData.voterDocumentId ? voterDataMap.get(pledgeData.voterDocumentId) : null;
 
             // Use voter data if available, otherwise fall back to pledge data
             const displayData = voterData || pledgeData;
+
+            // Apply global filter check (double-check for paginated items)
+            if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+                if (!window.GlobalFilter.matchesFilter(pledgeData)) {
+                    continue; // Skip this pledge if it doesn't match filter
+                }
+            }
 
             const voterName = voterData ? (voterData.name || pledgeData.voterName || 'N/A') : (pledgeData.voterName || 'N/A');
 
@@ -5044,6 +6111,8 @@ async function loadPledgesData(forceRefresh = false) {
 
             const row = document.createElement('tr');
             const currentPledgeId = pledgeDoc.id;
+            row.style.cursor = 'pointer';
+            row.dataset.pledgeId = currentPledgeId;
             row.innerHTML = `
                 <td style="text-align: center; color: var(--text-light); font-weight: 600;">${rowNumber}</td>
                 <td>
@@ -5058,13 +6127,15 @@ async function loadPledgesData(forceRefresh = false) {
                         <strong>${voterName}</strong>
                     </div>
                 </td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${displayData.constituency || 'N/A'}">${displayData.constituency || 'N/A'}</td>
+                <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${displayData.island || 'N/A'}">${displayData.island || 'N/A'}</td>
                 <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${permanentAddress}">${permanentAddress}</td>
                 <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${currentLocation}">${currentLocation}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                 <td>${dateStr}</td>
                 <td>
                     <div class="table-actions">
-                        <button class="icon-btn" title="View Details" onclick="viewPledgeDetails('${currentPledgeId}')">
+                        <button class="icon-btn" title="View Details" onclick="event.stopPropagation(); if (window.openPledgeDetailsSidePanel) window.openPledgeDetailsSidePanel('${currentPledgeId}');">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                                 <circle cx="12" cy="12" r="3"></circle>
@@ -5085,6 +6156,16 @@ async function loadPledgesData(forceRefresh = false) {
                     </div>
                 </td>
             `;
+
+            // Add click handler to row
+            row.addEventListener('click', function(e) {
+                if (e.target.closest('.table-actions')) {
+                    return;
+                }
+                if (window.openPledgeDetailsSidePanel) {
+                    window.openPledgeDetailsSidePanel(currentPledgeId);
+                }
+            });
 
             fragment.appendChild(row);
 
@@ -5116,8 +6197,8 @@ async function loadPledgesData(forceRefresh = false) {
         requestAnimationFrame(() => {
             tbody.textContent = '';
             tbody.appendChild(fragment);
-            // Render pagination
-            renderPagination('pledges', snapshot.docs.length);
+            // Render pagination with filtered count
+            renderPagination('pledges', filteredPledgeDocs.length);
         });
     } catch (error) {
         console.error('Error loading pledges:', error);
@@ -5206,6 +6287,11 @@ function renderCachedPledgesData() {
 
     // Initialize filteredPledges - ensure it's always an array
     let filteredPledges = Array.isArray(allPledges) ? allPledges : [];
+
+    // Apply global filter first
+    if (window.FilterUtils) {
+        filteredPledges = window.FilterUtils.applyFilterToArray(filteredPledges);
+    }
 
     // Apply search filter
     if (searchTerm) {
@@ -5347,6 +6433,8 @@ function renderCachedPledgesData() {
                     <strong>${voterName}</strong>
                 </div>
             </td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${displayData.constituency || 'N/A'}">${displayData.constituency || 'N/A'}</td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${displayData.island || 'N/A'}">${displayData.island || 'N/A'}</td>
             <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${permanentAddress}">${permanentAddress}</td>
             <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${currentLocation}">${currentLocation}</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
@@ -5716,10 +6804,31 @@ function renderCachedCallsData() {
     const tbody = document.getElementById('calls-table-body');
     if (!tbody) return false;
 
-    const {
+    let {
         calls,
         stats
     } = dataCache.calls.data;
+
+    // Apply global filter to cached calls
+    if (window.FilterUtils) {
+        calls = window.FilterUtils.applyFilterToArray(calls);
+        // Recalculate stats based on filtered data
+        let total = 0;
+        let answered = 0;
+        let pending = 0;
+        calls.forEach(callData => {
+            total++;
+            if (callData.status === 'answered') answered++;
+            else pending++;
+        });
+        const successRate = total > 0 ? Math.round((answered / total) * 100) : 0;
+        stats = {
+            total,
+            answered,
+            pending,
+            successRate
+        };
+    }
 
     // Update statistics
     const totalEl = document.getElementById('stat-calls-total');
@@ -5732,7 +6841,7 @@ function renderCachedCallsData() {
     if (successEl) successEl.textContent = `${stats.successRate}%`;
 
     if (calls.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">No calls recorded yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-light);">No calls recorded yet</td></tr>';
         renderPagination('calls', 0);
         return true;
     }
@@ -5746,16 +6855,10 @@ function renderCachedCallsData() {
     const fragment = document.createDocumentFragment();
     paginatedCalls.forEach(call => {
         const data = call;
-        const callDate = data.callDate ? (data.callDate.toDate ? data.callDate.toDate() : new Date(data.callDate)) : new Date();
-        const dateStr = callDate.toLocaleString('default', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
 
         const voterName = data.voterName || 'N/A';
+        const constituency = data.constituency || data.voterConstituency || 'N/A';
+        const island = data.island || data.voterIsland || 'N/A';
         const phone = data.phone || data.number || 'N/A';
         const caller = data.caller || data.agentName || 'N/A';
         const status = data.status || 'pending';
@@ -5763,16 +6866,44 @@ function renderCachedCallsData() {
         const statusText = status === 'answered' ? 'Answered' : (status === 'no-answer' ? 'No Answer' : (status === 'busy' ? 'Busy' : 'Pending'));
 
         const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.dataset.callId = call.id;
         row.innerHTML = `
             <td>${voterName}</td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${constituency}">${constituency}</td>
+            <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${island}">${island}</td>
             <td>${phone}</td>
             <td>${caller}</td>
-            <td>${dateStr}</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td>
-                <button class="icon-btn" title="View Details" onclick="viewCallDetails('${call.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+                <div class="table-actions">
+                    <button class="icon-btn" title="Edit Call" onclick="event.stopPropagation(); closeModal(); setTimeout(() => { if (window.openModal) window.openModal('call', '${call.id}'); }, 100);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" title="Delete Call" onclick="event.stopPropagation(); if (window.deleteCall) window.deleteCall('${call.id}');" style="color: var(--danger-color);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
             </td>
         `;
+
+        // Add click handler to row
+        row.addEventListener('click', function(e) {
+            // Don't trigger if clicking on the actions column
+            if (e.target.closest('.table-actions')) {
+                return;
+            }
+            if (window.openCallDetailsSidePanel) {
+                window.openCallDetailsSidePanel(call.id);
+            }
+        });
+
         fragment.appendChild(row);
     });
 
@@ -5781,13 +6912,27 @@ function renderCachedCallsData() {
         tbody.textContent = '';
         tbody.appendChild(fragment);
 
-        // Attach event listeners for view details buttons
-        tbody.querySelectorAll('[onclick*="viewCallDetails"]').forEach(btn => {
-            const callId = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
-            if (callId) {
-                btn.onclick = () => viewCallDetails(callId);
+        // Setup close button and overlay handlers
+        setTimeout(() => {
+            const closeBtn = document.getElementById('close-call-side-panel');
+            const overlay = document.getElementById('call-details-side-panel-overlay');
+            if (closeBtn && !closeBtn.dataset.listenerAttached) {
+                closeBtn.dataset.listenerAttached = 'true';
+                closeBtn.addEventListener('click', function() {
+                    if (window.closeCallDetailsSidePanel) {
+                        window.closeCallDetailsSidePanel();
+                    }
+                });
             }
-        });
+            if (overlay && !overlay.dataset.listenerAttached) {
+                overlay.dataset.listenerAttached = 'true';
+                overlay.addEventListener('click', function() {
+                    if (window.closeCallDetailsSidePanel) {
+                        window.closeCallDetailsSidePanel();
+                    }
+                });
+            }
+        }, 100);
     });
 
     // Render pagination
@@ -5957,7 +7102,26 @@ function populateAgentEditForm(agentData, agentId) {
     };
     const setAssignedArea = (area) => {
         const el = document.getElementById('agent-area');
-        if (el) el.value = area || '';
+        if (el) {
+            // First ensure the dropdown is populated
+            if (window.campaignData && window.campaignData.constituency && window.getIslandsForConstituency) {
+                const constituency = window.campaignData.constituency;
+                const islands = window.getIslandsForConstituency(constituency);
+
+                // Clear and populate options
+                el.innerHTML = '<option value="">Select Island</option>';
+                islands.forEach(island => {
+                    const option = document.createElement('option');
+                    option.value = island;
+                    option.textContent = island;
+                    el.appendChild(option);
+                });
+            }
+            // Then set the value
+            if (area) {
+                el.value = area;
+            }
+        }
     };
     const setPhone = (phone) => {
         const el = document.getElementById('agent-phone');
@@ -6109,7 +7273,31 @@ async function loadAnalyticsData() {
         } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
 
         // Fetch all data in parallel for efficiency
-        const [votersSnap, pledgesSnap, callsSnap, agentsSnap, eventsSnap, candidatesSnap] = await Promise.all([
+        // For calls, query both campaignEmail and email fields
+        const [callsSnap1, callsSnap2] = await Promise.all([
+            getDocs(query(collection(window.db, 'calls'), where('campaignEmail', '==', window.userEmail))).catch(() => ({
+                size: 0,
+                docs: [],
+                forEach: () => {}
+            })),
+            getDocs(query(collection(window.db, 'calls'), where('email', '==', window.userEmail))).catch(() => ({
+                size: 0,
+                docs: [],
+                forEach: () => {}
+            }))
+        ]);
+
+        // Merge calls from both queries (avoid duplicates)
+        const allCallsMap = new Map();
+        callsSnap1.forEach(doc => allCallsMap.set(doc.id, doc));
+        callsSnap2.forEach(doc => allCallsMap.set(doc.id, doc));
+        const callsSnap = {
+            size: allCallsMap.size,
+            docs: Array.from(allCallsMap.values()),
+            forEach: (callback) => allCallsMap.forEach((doc) => callback(doc))
+        };
+
+        const [votersSnap, pledgesSnap, agentsSnap, eventsSnap, candidatesSnap] = await Promise.all([
             getDocs(query(collection(window.db, 'voters'), where('email', '==', window.userEmail))).catch(() => ({
                 size: 0,
                 docs: [],
@@ -6120,17 +7308,12 @@ async function loadAnalyticsData() {
                 docs: [],
                 forEach: () => {}
             })),
-            getDocs(query(collection(window.db, 'calls'), where('email', '==', window.userEmail))).catch(() => ({
-                size: 0,
-                docs: [],
-                forEach: () => {}
-            })),
             getDocs(query(collection(window.db, 'agents'), where('email', '==', window.userEmail))).catch(() => ({
                 size: 0,
                 docs: [],
                 forEach: () => {}
             })),
-            getDocs(query(collection(window.db, 'events'), where('email', '==', window.userEmail))).catch(() => ({
+            getDocs(query(collection(window.db, 'events'), where('campaignEmail', '==', window.userEmail))).catch(() => ({
                 size: 0,
                 docs: [],
                 forEach: () => {}
@@ -6143,15 +7326,15 @@ async function loadAnalyticsData() {
         ]);
 
         // Extract data
-        const voters = votersSnap.docs.map(doc => ({
+        let voters = votersSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
-        const pledges = pledgesSnap.docs.map(doc => ({
+        let pledges = pledgesSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
-        const calls = callsSnap.docs.map(doc => ({
+        let calls = callsSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
@@ -6159,7 +7342,7 @@ async function loadAnalyticsData() {
             id: doc.id,
             ...doc.data()
         }));
-        const events = eventsSnap.docs.map(doc => ({
+        let events = eventsSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
@@ -6167,6 +7350,44 @@ async function loadAnalyticsData() {
             id: doc.id,
             ...doc.data()
         }));
+
+        // Apply global filter to voters, pledges, calls, and events
+        if (window.GlobalFilter && window.GlobalFilter.getState().isActive) {
+            const filterState = window.GlobalFilter.getState();
+
+            // Filter voters
+            const beforeVoterCount = voters.length;
+            voters = voters.filter(voter => {
+                return window.GlobalFilter.matchesFilter(voter);
+            });
+            console.log(`[loadAnalyticsData] Voters filtered: ${beforeVoterCount} -> ${voters.length} (filter: ${filterState.type} = ${filterState.value})`);
+
+            // Filter pledges - check if pledge data matches filter (pledges may have voter data embedded)
+            const beforePledgeCount = pledges.length;
+            pledges = pledges.filter(pledge => {
+                // Try to match pledge data directly (pledges may have constituency/island fields)
+                return window.GlobalFilter.matchesFilter(pledge);
+            });
+            console.log(`[loadAnalyticsData] Pledges filtered: ${beforePledgeCount} -> ${pledges.length}`);
+
+            // Filter calls
+            const beforeCallCount = calls.length;
+            calls = calls.filter(call => {
+                return window.GlobalFilter.matchesFilter(call);
+            });
+            console.log(`[loadAnalyticsData] Calls filtered: ${beforeCallCount} -> ${calls.length}`);
+
+            // Filter events - for events, constituency is master (show all when constituency or show all selected)
+            // Only filter by island when island filter is active
+            if (filterState.type === 'island') {
+                const beforeEventCount = events.length;
+                events = events.filter(event => {
+                    return window.GlobalFilter.matchesFilter(event);
+                });
+                console.log(`[loadAnalyticsData] Events filtered: ${beforeEventCount} -> ${events.length}`);
+            }
+            // If constituency or show all, show all events (no filtering)
+        }
 
         // Update key metrics
         updateKeyMetrics(voters, pledges, calls, agents);
@@ -6895,6 +8116,41 @@ function populateSettingsData() {
                 const enabled = e.target.checked;
                 localStorage.setItem('mobileBottomNavEnabled', enabled.toString());
                 updateMobileBottomNavVisibility();
+            });
+        }
+
+        // Initialize voter images toggle state from localStorage
+        const voterImagesToggle = document.getElementById('voter-images-toggle');
+        if (voterImagesToggle) {
+            const savedSetting = localStorage.getItem('voterImagesEnabled');
+            // Default to true (enabled) if not set
+            const isEnabled = savedSetting === null || savedSetting === 'true';
+            voterImagesToggle.checked = isEnabled;
+
+            // Add event listener for voter images toggle
+            voterImagesToggle.addEventListener('change', (e) => {
+                const enabled = e.target.checked;
+                localStorage.setItem('voterImagesEnabled', enabled.toString());
+
+                // Clear image caches when disabling to prevent stale data
+                if (!enabled) {
+                    imageFilenameCache.clear();
+                    imageNotFoundCache.clear();
+                }
+
+                // Reload current page data to reflect the change
+                // Check which page we're on and reload accordingly
+                if (typeof loadVotersData === 'function') {
+                    loadVotersData(true); // Force refresh
+                }
+                if (typeof loadPledgesData === 'function') {
+                    loadPledgesData(true); // Force refresh
+                }
+                if (typeof loadCallsData === 'function') {
+                    loadCallsData(true); // Force refresh
+                }
+
+                console.log('[Settings] Voter images', enabled ? 'enabled' : 'disabled');
             });
         }
 
@@ -9554,8 +10810,20 @@ function updateSettingsFields(data) {
         campaignTypeEl.textContent = typeMap[data.campaignType] || data.campaignType;
     }
 
-    if (locationEl && data.atoll && data.constituency && data.island) {
-        locationEl.textContent = `${data.atoll}, ${data.constituency}, ${data.island}`;
+    if (locationEl) {
+        // Build location string from constituency and island (atoll removed)
+        const locationParts = [];
+        if (data.constituency) {
+            locationParts.push(data.constituency);
+        }
+        if (data.island) {
+            locationParts.push(data.island);
+        }
+        if (locationParts.length > 0) {
+            locationEl.textContent = locationParts.join(', ');
+        } else {
+            locationEl.textContent = 'Not set';
+        }
     }
 
     if (emailEl && data.email) {
@@ -10201,33 +11469,6 @@ async function viewVoterDetails(voterId, navigateDirection = null) {
                             </svg>
                         </button>
                     </div>
-                    <!-- CRUD actions on right -->
-                    <div style="display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0;">
-                        <button 
-                            type="button"
-                            title="Edit Voter"
-                            onclick="editVoter('${voterId}')"
-                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(111, 193, 218, 0.4)'"
-                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(111, 193, 218, 0.3)'"
-                            style="width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: linear-gradient(135deg, #6fc1da 0%, #8dd4e8 100%); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(111, 193, 218, 0.3);">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                            </svg>
-                        </button>
-                        <button 
-                            type="button"
-                            title="Delete Voter"
-                            onclick="deleteVoter('${voterId}')"
-                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(220, 38, 38, 0.4)'"
-                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(220, 38, 38, 0.3)'"
-                            style="width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: #dc2626; color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            </svg>
-                        </button>
-                    </div>
                 </div>
 
                 <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid var(--border-color);">
@@ -10596,13 +11837,33 @@ function populateVoterEditForm(data, voterId) {
             // Use constituency from data, or fallback to campaign data
             const valueToSet = constituency || (window.campaignData && window.campaignData.constituency ? window.campaignData.constituency : '');
             el.value = valueToSet || '';
+
+            // If constituency is set, populate islands for that constituency
+            if (valueToSet && window.populateIslandDropdownForVoter && typeof window.populateIslandDropdownForVoter === 'function') {
+                window.populateIslandDropdownForVoter(valueToSet);
+            } else if (valueToSet && window.getIslandsForConstituency && typeof window.getIslandsForConstituency === 'function') {
+                // Fallback: manually populate islands
+                const islandSelect = document.getElementById('voter-island');
+                if (islandSelect) {
+                    islandSelect.innerHTML = '<option value="">Select Island</option>';
+                    const islands = window.getIslandsForConstituency(valueToSet);
+                    islands.forEach(island => {
+                        const option = document.createElement('option');
+                        option.value = island;
+                        option.textContent = island;
+                        islandSelect.appendChild(option);
+                    });
+                }
+            }
         }
     };
     const setIsland = (island) => {
         setTimeout(() => {
             const el = document.getElementById('voter-island');
-            if (el) el.value = island || '';
-        }, 200);
+            if (el) {
+                el.value = island || '';
+            }
+        }, 300); // Increased timeout to allow constituency dropdown to populate islands first
     };
     const setBallot = (ballot) => {
         const el = document.getElementById('voter-ballot');
@@ -11030,6 +12291,10 @@ async function viewPledgeDetails(pledgeId, navigateDirection = null) {
                     <div class="detail-item">
                         <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Gender</label>
                         <p style="margin: 0; color: var(--text-color); font-size: 15px; font-weight: 500;">${(displayData.gender && displayData.gender.trim()) ? (displayData.gender.charAt(0).toUpperCase() + displayData.gender.slice(1)) : 'N/A'}</p>
+                    </div>
+                    <div class="detail-item">
+                        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Constituency</label>
+                        <p style="margin: 0; color: var(--text-color); font-size: 15px; font-weight: 500;">${(displayData.constituency && displayData.constituency.trim()) ? displayData.constituency.trim() : ((pledgeData.constituency && pledgeData.constituency.trim()) ? pledgeData.constituency.trim() : 'N/A')}</p>
                     </div>
                     <div class="detail-item">
                         <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Island</label>
@@ -11742,10 +13007,31 @@ function populateCandidateEditForm(candidateData, candidateId) {
         idInput.value = candidateData.candidateId || '';
     }
 
-    // Set position
+    // Set position (ensure dropdown is populated first)
     const positionSelect = document.getElementById('candidate-position');
     if (positionSelect) {
-        positionSelect.value = candidateData.position || '';
+        // Make sure position dropdown is populated
+        if (window.setupCandidatePositionDropdown && typeof window.setupCandidatePositionDropdown === 'function') {
+            window.setupCandidatePositionDropdown();
+        }
+        // Set the value after a short delay to ensure dropdown is populated
+        setTimeout(() => {
+            const positionValue = candidateData.position || '';
+            if (positionValue) {
+                // Check if the value exists in the dropdown
+                const optionExists = Array.from(positionSelect.options).some(opt => opt.value === positionValue);
+                if (optionExists) {
+                    positionSelect.value = positionValue;
+                } else {
+                    // If position doesn't exist in filtered list, add it temporarily (for backward compatibility)
+                    const option = document.createElement('option');
+                    option.value = positionValue;
+                    option.textContent = positionValue;
+                    positionSelect.appendChild(option);
+                    positionSelect.value = positionValue;
+                }
+            }
+        }, 150);
     }
 
     // Set constituency
@@ -12950,39 +14236,92 @@ async function viewCallDetails(callId, navigateDirection = null) {
             getDocs
         } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
 
-        // Fetch all calls for navigation
+        // Fetch all calls for navigation - query both campaignEmail and email fields
         let allCalls = [];
         let currentIndex = -1;
+        const allCallsMap = new Map(); // Use Map to avoid duplicates
+
         try {
-            const callsQuery = query(
-                collection(window.db, 'calls'),
-                where('campaignEmail', '==', window.userEmail),
-                orderBy('callDate', 'desc')
-            );
-            const allCallsSnapshot = await getDocs(callsQuery);
-            allCalls = allCallsSnapshot.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            }));
-            currentIndex = allCalls.findIndex(c => c.id === callId);
-        } catch (queryError) {
-            // If index missing, query without orderBy
-            if (queryError.code === 'failed-precondition') {
-                const fallbackQuery = query(
+            // Query by campaignEmail first
+            try {
+                const callsQuery1 = query(
                     collection(window.db, 'calls'),
-                    where('campaignEmail', '==', window.userEmail)
+                    where('campaignEmail', '==', window.userEmail),
+                    orderBy('callDate', 'desc')
                 );
-                const fallbackSnapshot = await getDocs(fallbackQuery);
-                allCalls = fallbackSnapshot.docs.map(d => ({
-                    id: d.id,
-                    ...d.data()
-                })).sort((a, b) => {
-                    const dateA = a.callDate.toDate ? a.callDate.toDate() : new Date(a.callDate || 0);
-                    const dateB = b.callDate.toDate ? b.callDate.toDate() : new Date(b.callDate || 0);
-                    return dateB - dateA;
+                const allCallsSnapshot1 = await getDocs(callsQuery1);
+                allCallsSnapshot1.docs.forEach(d => {
+                    allCallsMap.set(d.id, {
+                        id: d.id,
+                        ...d.data()
+                    });
                 });
-                currentIndex = allCalls.findIndex(c => c.id === callId);
+            } catch (queryError1) {
+                // If index missing, query without orderBy
+                if (queryError1.code === 'failed-precondition' && queryError1.message.includes('index')) {
+                    const fallbackQuery1 = query(
+                        collection(window.db, 'calls'),
+                        where('campaignEmail', '==', window.userEmail)
+                    );
+                    const fallbackSnapshot1 = await getDocs(fallbackQuery1);
+                    fallbackSnapshot1.docs.forEach(d => {
+                        allCallsMap.set(d.id, {
+                            id: d.id,
+                            ...d.data()
+                        });
+                    });
+                }
             }
+
+            // Also query by email field to catch records that might only have email
+            try {
+                const callsQuery2 = query(
+                    collection(window.db, 'calls'),
+                    where('email', '==', window.userEmail),
+                    orderBy('callDate', 'desc')
+                );
+                const allCallsSnapshot2 = await getDocs(callsQuery2);
+                allCallsSnapshot2.docs.forEach(d => {
+                    // Only add if not already in map (avoid duplicates)
+                    if (!allCallsMap.has(d.id)) {
+                        allCallsMap.set(d.id, {
+                            id: d.id,
+                            ...d.data()
+                        });
+                    }
+                });
+            } catch (queryError2) {
+                // If index missing, query without orderBy
+                if (queryError2.code === 'failed-precondition' && queryError2.message.includes('index')) {
+                    const fallbackQuery2 = query(
+                        collection(window.db, 'calls'),
+                        where('email', '==', window.userEmail)
+                    );
+                    const fallbackSnapshot2 = await getDocs(fallbackQuery2);
+                    fallbackSnapshot2.docs.forEach(d => {
+                        if (!allCallsMap.has(d.id)) {
+                            allCallsMap.set(d.id, {
+                                id: d.id,
+                                ...d.data()
+                            });
+                        }
+                    });
+                }
+            }
+
+            // Convert Map to array and sort by callDate descending
+            allCalls = Array.from(allCallsMap.values()).sort((a, b) => {
+                const dateA = a.callDate ? (a.callDate.toDate ? a.callDate.toDate() : new Date(a.callDate)) : new Date(0);
+                const dateB = b.callDate ? (b.callDate.toDate ? b.callDate.toDate() : new Date(b.callDate)) : new Date(0);
+                return dateB - dateA; // Descending order
+            });
+
+            currentIndex = allCalls.findIndex(c => c.id === callId);
+        } catch (error) {
+            console.error('Error fetching calls for navigation:', error);
+            // Fallback: try to get at least the current call
+            allCalls = [];
+            currentIndex = -1;
         }
 
         // Handle navigation
@@ -13027,21 +14366,105 @@ async function viewCallDetails(callId, navigateDirection = null) {
                 (callData.status === 'busy' ? 'Busy' : 'Failed'));
 
         const modalContent = `
-            <div style="padding: 1.5rem;">
-                <!-- Actions at top -->
-                <div style="display: flex; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid var(--border-color); overflow-x: auto; -webkit-overflow-scrolling: touch;">
+            <div class="call-details-modal" style="max-width: 600px; margin: 0 auto;">
+                ${allCalls.length > 1 ? `
+                <!-- Navigation and Actions at top -->
+                <div style="display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid var(--border-color); overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                    <!-- Navigation controls on left -->
                     <div style="display: flex; gap: 6px; flex-wrap: nowrap; flex-shrink: 0;">
-                        <button class="btn-secondary btn-compact" onclick="closeModal()" style="white-space: nowrap;">Close</button>
-                        <button class="btn-primary btn-compact" onclick="closeModal(); setTimeout(() => { if (window.openModal) window.openModal('call', '${callId}'); }, 100);" style="white-space: nowrap;">Edit Call</button>
-                        <button class="btn-danger btn-compact" onclick="window.deleteCall('${callId}')" style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <button 
+                            id="call-nav-prev" 
+                            class="icon-btn"
+                            ${currentIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}
+                            onclick="viewCallDetails('${callId}', 'prev')"
+                            title="Previous Call"
+                            style="width: 40px; height: 40px; background: var(--white); color: var(--text-color); border: 2px solid var(--border-color); border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.15)'; this.style.borderColor='var(--primary-color)'"
+                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.1)'; this.style.borderColor='var(--border-color)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+                        <span style="color: var(--text-light); font-size: 12px; padding: 8px 8px; display: flex; align-items: center; white-space: nowrap; flex-shrink: 0;">
+                            ${currentIndex + 1} of ${allCalls.length}
+                        </span>
+                        <button 
+                            id="call-nav-next" 
+                            class="icon-btn"
+                            ${currentIndex === allCalls.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}
+                            onclick="viewCallDetails('${callId}', 'next')"
+                            title="Next Call"
+                            style="width: 40px; height: 40px; background: var(--white); color: var(--text-color); border: 2px solid var(--border-color); border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.15)'; this.style.borderColor='var(--primary-color)'"
+                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.1)'; this.style.borderColor='var(--border-color)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <!-- CRUD actions on right -->
+                    <div style="display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0;">
+                        <button 
+                            type="button"
+                            class="icon-btn" 
+                            onclick="closeModal(); setTimeout(() => { if (window.openModal) window.openModal('call', '${callId}'); }, 100);" 
+                            title="Edit Call"
+                            style="width: 40px; height: 40px; background: linear-gradient(135deg, #6fc1da 0%, #8dd4e8 100%); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(111, 193, 218, 0.3); display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(111, 193, 218, 0.4)'"
+                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(111, 193, 218, 0.3)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
+                        <button 
+                            type="button"
+                            class="icon-btn" 
+                            onclick="window.deleteCall('${callId}')" 
+                            title="Delete Call"
+                            style="width: 40px; height: 40px; background: var(--danger-color); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(220, 38, 38, 0.4)'"
+                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(220, 38, 38, 0.3)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="3 6 5 6 21 6"></polyline>
                                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                             </svg>
-                            Delete Call
                         </button>
                     </div>
                 </div>
+                ` : `
+                <!-- Actions only when single call -->
+                <div style="display: flex; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid var(--border-color); overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                    <div style="display: flex; gap: 8px; flex-wrap: nowrap; flex-shrink: 0;">
+                        <button 
+                            type="button"
+                            class="icon-btn" 
+                            onclick="closeModal(); setTimeout(() => { if (window.openModal) window.openModal('call', '${callId}'); }, 100);" 
+                            title="Edit Call"
+                            style="width: 40px; height: 40px; background: linear-gradient(135deg, #6fc1da 0%, #8dd4e8 100%); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(111, 193, 218, 0.3); display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(111, 193, 218, 0.4)'"
+                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(111, 193, 218, 0.3)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                        </button>
+                        <button 
+                            type="button"
+                            class="icon-btn" 
+                            onclick="window.deleteCall('${callId}')" 
+                            title="Delete Call"
+                            style="width: 40px; height: 40px; background: var(--danger-color); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+                            onmouseover="this.style.transform='translateY(-2px) scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(220, 38, 38, 0.4)'"
+                            onmouseout="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(220, 38, 38, 0.3)'">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                `}
 
                 <div style="display: grid; gap: 1.5rem;">
                     <div style="background: var(--light-color); padding: 1.25rem; border-radius: 12px;">
@@ -13052,35 +14475,30 @@ async function viewCallDetails(callId, navigateDirection = null) {
                                 const voterName = callData.voterName || 'N/A';
                                 const initials = voterName && voterName !== 'N/A' ? voterName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'NA';
                                 const imageUrl = voterIdNumber ? getVoterImageUrl({}, voterIdNumber) : '';
+                                const constituency = callData.constituency || callData.voterConstituency || 'N/A';
+                                const island = callData.island || callData.voterIsland || 'N/A';
                                 return imageUrl ? 
                                     ` < img id = "call-detail-image"
         src = "${imageUrl}"
         alt = "${voterName}"
         style = "width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);"
         data - voter - id = "${voterIdNumber}"
-        onerror = "this.onerror=null; this.style.display='none'; const fallback=this.nextElementSibling; if(fallback) fallback.style.display='flex'; tryLoadImageFromFolder(this, '${voterIdNumber}').then(found => { if(found) { this.src=found; this.style.display=''; if(fallback) fallback.style.display='none'; } });" > < div id = "call-detail-fallback"
+        onerror = "this.onerror=null; this.style.display='none'; const fallback=this.nextElementSibling; if(fallback) fallback.style.display='flex'; tryLoadImageFromFolder(this, '${voterIdNumber}').then(function(found) { if(found) { this.src=found; this.style.display=''; if(fallback) fallback.style.display='none'; } });" / >
+            <
+            div id = "call-detail-fallback"
         style = "width: 60px; height: 60px; border-radius: 50%; display: none; align-items: center; justify-content: center; background: var(--gradient-primary); color: white; font-weight: 700; font-size: 20px; border: 2px solid var(--primary-color);" > $ {
             initials
         } < /div>` :
         `<div id="call-detail-fallback" style="width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--gradient-primary); color: white; font-weight: 700; font-size: 20px; border: 2px solid var(--primary-color);">${initials}</div>`;
     })()
 } <
-div >
-    <
-    div style = "font-size: 1.125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;" > $ {
-        callData.voterName || 'N/A'
-    } < /div> <
+/div> <div > <
+div style = "font-size: 1.125rem; font-weight: 600; color: var(--text-color); margin-bottom: 0.25rem;" > $ {
+    callData.voterName || 'N/A'
+} < /div> <
 div style = "font-size: 0.875rem; color: var(--text-light);" > ID: $ {
     callData.voterId || 'N/A'
-} < /div>
-$ {
-    callData.phone ?
-        <
-        div style = "font-size: 0.875rem; color: var(--text-light); margin-top: 0.25rem;" > Phone : $ {
-            callData.phone
-        } < /div>
-} <
-/div> < /
+} < /div> < /
 div > <
     /div>
 
@@ -13113,163 +14531,856 @@ div > < span class = "status-badge ${statusClass}" > $ {
     <
     /div> < /
 div > <
-    /div>
+    /div> < /
+div > <
+    /div>`;
 
-$ {
-    callData.notes ?
-        <
-        div style = "background: var(--light-color); padding: 1.25rem; border-radius: 12px;" >
-        <
-        div style = "font-size: 0.875rem; color: var(--text-light); margin-bottom: 0.5rem;" > Notes < /div> <
-    div style = "font-size: 0.9375rem; color: var(--text-color); line-height: 1.6; white-space: pre-wrap;" > $ {
-        callData.notes
-    } < /div> < /
-    div >
-}
+// Open modal using the existing modal system
+if (window.openModal) {
+    window.openModal('call', callId);
+    // Update modal content with details view
+    setTimeout(() => {
+        modalTitle = document.getElementById('modal-title');
+        modalBody = document.getElementById('modal-body');
+        if (modalTitle && modalBody) {
+            modalTitle.textContent = 'Call Details';
+            modalBody.innerHTML = modalContent;
 
-$ {
-    allCalls.length > 1 ?
-        <
-        div style = "display: flex; flex-wrap: nowrap; justify-content: center; align-items: center; gap: 8px; margin-top: 1rem; padding-top: 1rem; border-top: 2px solid var(--border-color); overflow-x: auto; -webkit-overflow-scrolling: touch;" >
-        <
-        div style = "display: flex; gap: 6px; flex-wrap: nowrap; flex-shrink: 0;" >
-        <
-        button
-    class = "btn-secondary btn-compact"
-    $ {
-        currentIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''
-    }
-    onclick = "viewCallDetails('${callId}', 'prev')"
-    style = "display: flex; align-items: center; gap: 6px;" >
-        <
-        svg xmlns = "http://www.w3.org/2000/svg"
-    width = "16"
-    height = "16"
-    viewBox = "0 0 24 24"
-    fill = "none"
-    stroke = "currentColor"
-    stroke - width = "2"
-    stroke - linecap = "round"
-    stroke - linejoin = "round" >
-        <
-        polyline points = "15 18 9 12 15 6" > < /polyline> < /
-    svg >
-        Previous <
-        /button> <
-    span style = "color: var(--text-light); font-size: 12px; padding: 8px 8px; display: flex; align-items: center; white-space: nowrap; flex-shrink: 0;" >
-        $ {
-            currentIndex + 1
-        } of $ {
-            allCalls.length
-        } <
-        /span> <
-    button
-    class = "btn-secondary btn-compact"
-    $ {
-        currentIndex === allCalls.length - 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''
-    }
-    onclick = "viewCallDetails('${callId}', 'next')"
-    style = "display: flex; align-items: center; gap: 6px;" >
-        Next <
-        svg xmlns = "http://www.w3.org/2000/svg"
-    width = "16"
-    height = "16"
-    viewBox = "0 0 24 24"
-    fill = "none"
-    stroke = "currentColor"
-    stroke - width = "2"
-    stroke - linecap = "round"
-    stroke - linejoin = "round" >
-        <
-        polyline points = "9 18 15 12 9 6" > < /polyline> < /
-    svg > <
-        /button> < /
-    div > <
-        /div>
-} <
-/div> < /
-div >
-    `;
+            // If voterId exists, try to lookup image from images folder asynchronously
+            const voterIdNumber = callData.voterId || '';
+            if (voterIdNumber && voterIdNumber.trim()) {
+                const currentImageUrl = getVoterImageUrl({}, voterIdNumber);
+                if (!currentImageUrl) {
+                    lookupImageFromFolder(voterIdNumber).then(foundUrl => {
+                        if (foundUrl) {
+                            const detailImg = modalBody.querySelector('#call-detail-image');
+                            const detailFallback = modalBody.querySelector('#call-detail-fallback');
 
-        // Open modal using the existing modal system
-        if (window.openModal) {
-            window.openModal('call', callId);
-            // Update modal content with details view
-            setTimeout(() => {
-                modalTitle = document.getElementById('modal-title');
-                modalBody = document.getElementById('modal-body');
-                if (modalTitle && modalBody) {
-                    modalTitle.textContent = 'Call Details';
-                    modalBody.innerHTML = modalContent;
-                    
-                    // If voterId exists, try to lookup image from images folder asynchronously
-                    const voterIdNumber = callData.voterId || '';
-                    if (voterIdNumber && voterIdNumber.trim()) {
-                        const currentImageUrl = getVoterImageUrl({}, voterIdNumber);
-                        if (!currentImageUrl) {
-                            lookupImageFromFolder(voterIdNumber).then(foundUrl => {
-                                if (foundUrl) {
-                                    const detailImg = modalBody.querySelector('#call-detail-image');
-                                    const detailFallback = modalBody.querySelector('#call-detail-fallback');
-                                    
-                                    if (detailImg) {
-                                        detailImg.src = foundUrl;
-                                        detailImg.style.display = '';
-                                        if (detailFallback) {
-                                            detailFallback.style.display = 'none';
-                                        }
-                                    } else if (detailFallback) {
-                                        // If no img element exists, create one
-                                        const voterName = callData.voterName || 'Voter';
-                                        const img = document.createElement('img');
-                                        img.id = 'call-detail-image';
-                                        img.src = foundUrl;
-                                        img.alt = voterName;
-                                        img.style.cssText = 'width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);';
-                                        img.setAttribute('data-voter-id', voterIdNumber);
-                                        img.onerror = function() {
-                                            this.style.display = 'none';
-                                            if (detailFallback) {
-                                                detailFallback.style.display = 'flex';
-                                            }
-                                        };
-                                        detailFallback.parentNode.replaceChild(img, detailFallback);
-                                    }
+                            if (detailImg) {
+                                detailImg.src = foundUrl;
+                                detailImg.style.display = '';
+                                if (detailFallback) {
+                                    detailFallback.style.display = 'none';
                                 }
-                            }).catch(() => {
-                                // Silently fail - fallback will show
-                            });
+                            } else if (detailFallback) {
+                                // If no img element exists, create one
+                                const voterName = callData.voterName || 'Voter';
+                                const img = document.createElement('img');
+                                img.id = 'call-detail-image';
+                                img.src = foundUrl;
+                                img.alt = voterName;
+                                img.style.cssText = 'width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);';
+                                img.setAttribute('data-voter-id', voterIdNumber);
+                                img.onerror = function() {
+                                    this.style.display = 'none';
+                                    if (detailFallback) {
+                                        detailFallback.style.display = 'flex';
+                                    }
+                                };
+                                detailFallback.parentNode.replaceChild(img, detailFallback);
+                            }
                         }
-                    }
+                    }).catch(() => {
+                        // Silently fail - fallback will show
+                    });
                 }
-            }, 100);
-        } else {
-            // Fallback: use showDialog if openModal not available
-            window.showDialog('Call Details', modalContent);
+            }
         }
-    } catch (error) {
-        console.error('Error loading call details:', error);
-        if (!modalTitle || !modalBody) {
-            window.showErrorDialog('Failed to load call details. Please try again.', 'Error');
-        } else {
-            modalTitle.textContent = 'Error';
-            modalBody.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--danger-color);">Failed to load call details. Please try again.</div>';
-        }
+    }, 100);
+} else {
+    // Fallback: use showDialog if openModal not available
+    window.showDialog('Call Details', modalContent);
+}
+} catch (error) {
+    console.error('Error loading call details:', error);
+    if (!modalTitle || !modalBody) {
+        window.showErrorDialog('Failed to load call details. Please try again.', 'Error');
+    } else {
+        modalTitle.textContent = 'Error';
+        modalBody.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--danger-color);">Failed to load call details. Please try again.</div>';
     }
+}
 }
 window.viewCallDetails = viewCallDetails;
 
-// Delete Call Function
-async function deleteCall(callId) {
+// Open Call Details Side Panel
+async function openCallDetailsSidePanel(callId) {
     if (!window.db || !window.userEmail) {
-        window.showErrorDialog('Database not initialized. Please refresh the page.');
+        if (window.showErrorDialog) {
+            window.showErrorDialog('Database not initialized. Please refresh the page.');
+        } else {
+            alert('Database not initialized. Please refresh the page.');
+        }
         return;
     }
 
-    const confirmed = await window.showConfirm(
-        'Are you sure you want to delete this call record? This action cannot be undone.',
-        'Delete Call'
-    );
+    const sidePanel = document.getElementById('call-details-side-panel');
+    const sidePanelContent = document.getElementById('call-details-side-panel-content');
+    const overlay = document.getElementById('call-details-side-panel-overlay');
+
+    if (!sidePanel || !sidePanelContent || !overlay) {
+        console.error('[openCallDetailsSidePanel] Side panel elements not found');
+        return;
+    }
+
+    try {
+        // Show loading state
+        sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light);">Loading call details...</div>';
+        sidePanel.style.display = 'flex';
+        sidePanel.classList.add('show');
+        overlay.style.display = 'block';
+        // Trigger reflow for animation
+        void sidePanel.offsetWidth;
+
+        // Fetch call data
+        const {
+            doc,
+            getDoc
+        } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+
+        const callRef = doc(window.db, 'calls', callId);
+        const callSnap = await getDoc(callRef);
+
+        if (!callSnap.exists()) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Call record not found.</div>';
+            return;
+        }
+
+        const callData = callSnap.data();
+
+        // Check permission
+        if (callData.campaignEmail !== window.userEmail && callData.email !== window.userEmail) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">You do not have permission to view this call record.</div>';
+            return;
+
+            // Get all calls for navigation
+            let allCalls = [];
+            try {
+                const callsQuery1 = query(collection(window.db, 'calls'), where('campaignEmail', '==', window.userEmail), orderBy('callDate', 'desc'));
+                const snapshot1 = await getDocs(callsQuery1);
+                snapshot1.forEach(doc => {
+                    allCalls.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
+                });
+            } catch (e) {
+                const fallbackQuery1 = query(collection(window.db, 'calls'), where('campaignEmail', '==', window.userEmail));
+                const fallbackSnapshot1 = await getDocs(fallbackQuery1);
+                fallbackSnapshot1.forEach(doc => {
+                    allCalls.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
+                });
+            }
+            try {
+                const callsQuery2 = query(collection(window.db, 'calls'), where('email', '==', window.userEmail), orderBy('callDate', 'desc'));
+                const snapshot2 = await getDocs(callsQuery2);
+                snapshot2.forEach(doc => {
+                    if (!allCalls.find(c => c.id === doc.id)) {
+                        allCalls.push({
+                            id: doc.id,
+                            ...doc.data()
+                        });
+                    }
+                });
+            } catch (e) {
+                const fallbackQuery2 = query(collection(window.db, 'calls'), where('email', '==', window.userEmail));
+                const fallbackSnapshot2 = await getDocs(fallbackQuery2);
+                fallbackSnapshot2.forEach(doc => {
+                    if (!allCalls.find(c => c.id === doc.id)) {
+                        allCalls.push({
+                            id: doc.id,
+                            ...doc.data()
+                        });
+                    }
+                });
+            }
+
+            // Sort by callDate descending
+            allCalls.sort((a, b) => {
+                const dateA = a.callDate ? (a.callDate.toDate ? a.callDate.toDate() : new Date(a.callDate)) : new Date(0);
+                const dateB = b.callDate ? (b.callDate.toDate ? b.callDate.toDate() : new Date(b.callDate)) : new Date(0);
+                return dateB - dateA;
+            });
+
+            // Find current call index for navigation
+            const currentIndex = allCalls.findIndex(c => c.id === callId);
+            const prevCallId = currentIndex > 0 ? allCalls[currentIndex - 1].id : null;
+            const nextCallId = currentIndex < allCalls.length - 1 ? allCalls[currentIndex + 1].id : null;
+
+        }
+
+        // Format date
+        const callDate = callData.callDate ? (callData.callDate.toDate ? callData.callDate.toDate() : new Date(callData.callDate)) : new Date();
+        const dateStr = callDate.toLocaleString('default', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Status styling
+        const statusClass = callData.status === 'answered' ? 'status-success' :
+            (callData.status === 'no-answer' ? 'status-warning' :
+                (callData.status === 'busy' ? 'status-info' : 'status-danger'));
+        const statusText = callData.status === 'answered' ? 'Answered' :
+            (callData.status === 'no-answer' ? 'No Answer' :
+                (callData.status === 'busy' ? 'Busy' : 'Failed'));
+
+        // Voter initials for avatar
+        const voterName = callData.voterName || 'N/A';
+        const initials = voterName && voterName !== 'N/A' ? voterName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'NA';
+        const voterIdNumber = callData.voterId || '';
+
+        // Build notes section
+        const notesSection = callData.notes ?
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Notes & Remarks</div>' +
+            '<div style="font-size: 14px; color: var(--text-color); line-height: 1.7; white-space: pre-wrap; word-wrap: break-word;">' + (callData.notes || '') + '</div>' +
+            '</div>' :
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Notes & Remarks</div>' +
+            '<div style="font-size: 14px; color: var(--text-muted); font-style: italic;">No notes available</div>' +
+            '</div>';
+
+        // Build panel content
+        const panelHTML = '<div style="display: flex; flex-direction: column; gap: 20px;">' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Voter Information</div>' +
+            '<div style="display: flex; align-items: center; gap: 16px;">' +
+            '<div id="call-side-panel-avatar" style="width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--gradient-primary); color: white; font-weight: 700; font-size: 20px; border: 2px solid var(--primary-color); flex-shrink: 0;">' + initials + '</div>' +
+            '<div style="flex: 1;">' +
+            '<div style="font-size: 18px; font-weight: 600; color: var(--text-color); margin-bottom: 4px;">' + voterName + '</div>' +
+            '<div style="font-size: 13px; color: var(--text-light);">ID: ' + (callData.voterId || 'N/A') + '</div>' +
+            '</div>' +
+            '</div>' +
+            '</div>' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Call Information</div>' +
+            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">' +
+            '<div>' +
+            '<div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Caller</div>' +
+            '<div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (callData.caller || 'N/A') + '</div>' +
+            '</div>' +
+            '<div>' +
+            '<div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Date & Time</div>' +
+            '<div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + dateStr + '</div>' +
+            '</div>' +
+            '<div>' +
+            '<div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Status</div>' +
+            '<div><span class="status-badge ' + statusClass + '">' + statusText + '</span></div>' +
+            '</div>' +
+            '<div>' +
+            '<div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Phone</div>' +
+            '<div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (callData.phone || callData.number || 'N/A') + '</div>' +
+            '</div>' +
+            '<div>' +
+            '<div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Constituency</div>' +
+            '<div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (callData.constituency || callData.voterConstituency || 'N/A') + '</div>' +
+            '</div>' +
+            '<div>' +
+            '<div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Island</div>' +
+            '<div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (callData.island || callData.voterIsland || 'N/A') + '</div>' +
+            '</div>' +
+            '</div>' +
+            '</div>' +
+            notesSection +
+            '</div>';
+
+        sidePanelContent.innerHTML = panelHTML;
+
+        // Try to load voter image if available
+        if (voterIdNumber && voterIdNumber.trim()) {
+            const currentImageUrl = getVoterImageUrl({}, voterIdNumber);
+            const avatarEl = document.getElementById('call-side-panel-avatar');
+            if (avatarEl && !currentImageUrl) {
+                lookupImageFromFolder(voterIdNumber).then(foundUrl => {
+                    if (foundUrl && avatarEl) {
+                        const img = document.createElement('img');
+                        img.src = foundUrl;
+                        img.alt = voterName;
+                        img.style.cssText = 'width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);';
+                        img.onerror = function() {
+                            this.style.display = 'none';
+                        };
+                        avatarEl.parentNode.replaceChild(img, avatarEl);
+                    }
+                }).catch(() => {
+                    // Silently fail - keep initials
+                });
+            } else if (avatarEl && currentImageUrl) {
+                const img = document.createElement('img');
+                img.src = currentImageUrl;
+                img.alt = voterName;
+                img.style.cssText = 'width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);';
+                img.onerror = function() {
+                    this.style.display = 'none';
+                };
+                avatarEl.parentNode.replaceChild(img, avatarEl);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error loading call details:', error);
+        sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Failed to load call details. Please try again.</div>';
+    }
+}
+
+// Close Call Details Side Panel
+function closeCallDetailsSidePanel() {
+    const sidePanel = document.getElementById('call-details-side-panel');
+    const overlay = document.getElementById('call-details-side-panel-overlay');
+
+    if (sidePanel) {
+        sidePanel.classList.remove('show');
+        sidePanel.classList.remove('side-panel-maximized');
+        setTimeout(() => {
+            sidePanel.style.display = 'none';
+        }, 300);
+    }
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+// Generic function to toggle maximize for side panels
+function toggleSidePanelMaximize(panelId, buttonId) {
+    const sidePanel = document.getElementById(panelId);
+    const maximizeBtn = document.getElementById(buttonId);
+
+    if (!sidePanel || !maximizeBtn) return;
+
+    const isMaximized = sidePanel.classList.contains('side-panel-maximized');
+
+    if (isMaximized) {
+        // Minimize
+        sidePanel.classList.remove('side-panel-maximized');
+        maximizeBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+        `;
+        maximizeBtn.title = 'Maximize';
+    } else {
+        // Maximize
+        sidePanel.classList.add('side-panel-maximized');
+        maximizeBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
+            </svg>
+        `;
+        maximizeBtn.title = 'Restore';
+    }
+}
+
+// Open Voter Details Side Panel
+async function openVoterDetailsSidePanel(voterId) {
+    // Use existing viewVoterDetails function but display in side panel
+    const sidePanel = document.getElementById('voter-details-side-panel');
+    const sidePanelContent = document.getElementById('voter-details-side-panel-content');
+    const overlay = document.getElementById('voter-details-side-panel-overlay');
+
+    if (!sidePanel || !sidePanelContent || !overlay) {
+        // Fallback to modal if side panel not found
+        if (window.viewVoterDetails) {
+            window.viewVoterDetails(voterId);
+        }
+        return;
+    }
+
+    // Show loading
+    sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light);">Loading voter details...</div>';
+    sidePanel.style.display = 'flex';
+    sidePanel.classList.add('show');
+    overlay.style.display = 'block';
+    void sidePanel.offsetWidth;
+
+    try {
+        // Fetch voter data (reuse logic from viewVoterDetails)
+        const {
+            doc,
+            getDoc
+        } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const voterRef = doc(window.db, 'voters', voterId);
+        const voterSnap = await getDoc(voterRef);
+
+        if (!voterSnap.exists()) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Voter not found.</div>';
+            return;
+        }
+
+        const data = voterSnap.data();
+
+        // Verify permission
+        if (data.email !== window.userEmail && data.campaignEmail !== window.userEmail) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">You do not have permission to view this voter.</div>';
+            return;
+        }
+
+        // Format data
+        const idNumber = data.idNumber || data.voterId || '';
+        const initials = data.name ? data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'NA';
+        let imageUrl = getVoterImageUrl(data, idNumber);
+
+        // Build content HTML (simplified version)
+        const contentHTML = '<div style="display: flex; flex-direction: column; gap: 20px;">' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Voter Information</div>' +
+            '<div style="display: flex; align-items: center; gap: 16px;">' +
+            '<div id="voter-side-panel-avatar" style="width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--gradient-primary); color: white; font-weight: 700; font-size: 20px; border: 2px solid var(--primary-color); flex-shrink: 0;">' + initials + '</div>' +
+            '<div style="flex: 1;">' +
+            '<div style="font-size: 18px; font-weight: 600; color: var(--text-color); margin-bottom: 4px;">' + (data.name || 'N/A') + '</div>' +
+            '<div style="font-size: 13px; color: var(--text-light);">ID: ' + idNumber + '</div>' +
+            '</div></div></div>' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Details</div>' +
+            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Age</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.age || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Gender</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.gender || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Island</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.island || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Constituency</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.constituency || data.voterConstituency || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Phone</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.number || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Status</div><div><span style="display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; background: ' + (data.verified ? 'var(--success-color)' : 'var(--warning-color)') + '; color: white;">' + (data.verified ? 'Verified' : 'Pending') + '</span></div></div>' +
+            '</div></div>' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Address</div>' +
+            '<div style="font-size: 14px; color: var(--text-color); line-height: 1.7;">' + (data.permanentAddress || 'N/A') + '</div>' +
+            '</div></div>';
+
+        sidePanelContent.innerHTML = contentHTML;
+
+        // Try to load image
+        if (idNumber && idNumber.trim()) {
+            const avatarEl = document.getElementById('voter-side-panel-avatar');
+            if (avatarEl) {
+                if (!imageUrl) {
+                    lookupImageFromFolder(idNumber).then(foundUrl => {
+                        if (foundUrl && avatarEl) {
+                            const img = document.createElement('img');
+                            img.src = foundUrl;
+                            img.alt = data.name || 'Voter';
+                            img.style.cssText = 'width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);';
+                            img.onerror = function() {
+                                this.style.display = 'none';
+                            };
+                            avatarEl.parentNode.replaceChild(img, avatarEl);
+                        }
+                    }).catch(() => {});
+                } else if (imageUrl) {
+                    const img = document.createElement('img');
+                    img.src = imageUrl;
+                    img.alt = data.name || 'Voter';
+                    img.style.cssText = 'width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color);';
+                    img.onerror = function() {
+                        this.style.display = 'none';
+                    };
+                    avatarEl.parentNode.replaceChild(img, avatarEl);
+                }
+            }
+        }
+
+        // Setup close and maximize handlers
+        setTimeout(() => {
+            const closeBtn = document.getElementById('close-voter-side-panel');
+            const maximizeBtn = document.getElementById('maximize-voter-side-panel');
+            if (closeBtn && !closeBtn.dataset.listenerAttached) {
+                closeBtn.dataset.listenerAttached = 'true';
+                closeBtn.addEventListener('click', () => closeVoterDetailsSidePanel());
+            }
+            if (maximizeBtn && !maximizeBtn.dataset.listenerAttached) {
+                maximizeBtn.dataset.listenerAttached = 'true';
+                maximizeBtn.addEventListener('click', () => toggleSidePanelMaximize('voter-details-side-panel', 'maximize-voter-side-panel'));
+            }
+            if (overlay && !overlay.dataset.listenerAttached) {
+                overlay.dataset.listenerAttached = 'true';
+                overlay.addEventListener('click', () => closeVoterDetailsSidePanel());
+            }
+        }, 100);
+
+    } catch (error) {
+        console.error('Error loading voter details:', error);
+        sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Failed to load voter details.</div>';
+    }
+}
+
+// Close Voter Details Side Panel
+function closeVoterDetailsSidePanel() {
+    const sidePanel = document.getElementById('voter-details-side-panel');
+    const overlay = document.getElementById('voter-details-side-panel-overlay');
+
+    if (sidePanel) {
+        sidePanel.classList.remove('show');
+        sidePanel.classList.remove('side-panel-maximized');
+        setTimeout(() => {
+            sidePanel.style.display = 'none';
+        }, 300);
+    }
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+// Open Candidate Details Side Panel
+async function openCandidateDetailsSidePanel(candidateId) {
+    const sidePanel = document.getElementById('candidate-details-side-panel');
+    const sidePanelContent = document.getElementById('candidate-details-side-panel-content');
+    const overlay = document.getElementById('candidate-details-side-panel-overlay');
+
+    if (!sidePanel || !sidePanelContent || !overlay) {
+        if (window.viewCandidateDetails) {
+            window.viewCandidateDetails(candidateId);
+        }
+        return;
+    }
+
+    sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light);">Loading candidate details...</div>';
+    sidePanel.style.display = 'flex';
+    sidePanel.classList.add('show');
+    overlay.style.display = 'block';
+    void sidePanel.offsetWidth;
+
+    try {
+        const {
+            doc,
+            getDoc
+        } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const candidateRef = doc(window.db, 'candidates', candidateId);
+        const candidateSnap = await getDoc(candidateRef);
+
+        if (!candidateSnap.exists()) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Candidate not found.</div>';
+            return;
+        }
+
+        const data = candidateSnap.data();
+
+        if (data.email !== window.userEmail) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">You do not have permission to view this candidate.</div>';
+            return;
+        }
+
+        const contentHTML = '<div style="display: flex; flex-direction: column; gap: 20px;">' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Candidate Information</div>' +
+            '<div style="font-size: 18px; font-weight: 600; color: var(--text-color); margin-bottom: 8px;">' + (data.name || 'N/A') + '</div>' +
+            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Position</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.position || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Island</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.island || data.constituency || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Constituency</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.constituency || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Phone</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.phone || data.number || 'N/A') + '</div></div>' +
+            '</div></div></div>';
+
+        sidePanelContent.innerHTML = contentHTML;
+
+        setTimeout(() => {
+            const closeBtn = document.getElementById('close-candidate-side-panel');
+            const maximizeBtn = document.getElementById('maximize-candidate-side-panel');
+            if (closeBtn && !closeBtn.dataset.listenerAttached) {
+                closeBtn.dataset.listenerAttached = 'true';
+                closeBtn.addEventListener('click', () => closeCandidateDetailsSidePanel());
+            }
+            if (maximizeBtn && !maximizeBtn.dataset.listenerAttached) {
+                maximizeBtn.dataset.listenerAttached = 'true';
+                maximizeBtn.addEventListener('click', () => toggleSidePanelMaximize('candidate-details-side-panel', 'maximize-candidate-side-panel'));
+            }
+            if (overlay && !overlay.dataset.listenerAttached) {
+                overlay.dataset.listenerAttached = 'true';
+                overlay.addEventListener('click', () => closeCandidateDetailsSidePanel());
+            }
+        }, 100);
+
+    } catch (error) {
+        console.error('Error loading candidate details:', error);
+        sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Failed to load candidate details.</div>';
+    }
+}
+
+// Close Candidate Details Side Panel
+function closeCandidateDetailsSidePanel() {
+    const sidePanel = document.getElementById('candidate-details-side-panel');
+    const overlay = document.getElementById('candidate-details-side-panel-overlay');
+
+    if (sidePanel) {
+        sidePanel.classList.remove('show');
+        sidePanel.classList.remove('side-panel-maximized');
+        setTimeout(() => {
+            sidePanel.style.display = 'none';
+        }, 300);
+    }
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+// Open Event Details Side Panel
+async function openEventDetailsSidePanel(eventId) {
+    const sidePanel = document.getElementById('event-details-side-panel');
+    const sidePanelContent = document.getElementById('event-details-side-panel-content');
+    const overlay = document.getElementById('event-details-side-panel-overlay');
+
+    if (!sidePanel || !sidePanelContent || !overlay) {
+        if (window.viewEventDetails) {
+            window.viewEventDetails(eventId);
+        }
+        return;
+    }
+
+    sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light);">Loading event details...</div>';
+    sidePanel.style.display = 'flex';
+    sidePanel.classList.add('show');
+    overlay.style.display = 'block';
+    void sidePanel.offsetWidth;
+
+    try {
+        const {
+            doc,
+            getDoc
+        } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const eventRef = doc(window.db, 'events', eventId);
+        const eventSnap = await getDoc(eventRef);
+
+        if (!eventSnap.exists()) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Event not found.</div>';
+            return;
+        }
+
+        const data = eventSnap.data();
+
+        if (data.campaignEmail !== window.userEmail) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">You do not have permission to view this event.</div>';
+            return;
+        }
+
+        const eventDate = data.eventDate ? (data.eventDate.toDate ? data.eventDate.toDate() : new Date(data.eventDate)) : new Date();
+        const dateStr = eventDate.toLocaleString('default', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        const contentHTML = '<div style="display: flex; flex-direction: column; gap: 20px;">' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Event Information</div>' +
+            '<div style="font-size: 18px; font-weight: 600; color: var(--text-color); margin-bottom: 16px;">' + (data.eventName || 'N/A') + '</div>' +
+            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Date & Time</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + dateStr + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Venue</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.venue || data.location || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Island</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.island || 'N/A') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Expected Attendees</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.expectedAttendees || 0) + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Start Time</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.startTime || 'TBD') + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">End Time</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.endTime || 'TBD') + '</div></div>' +
+            '</div></div></div>';
+
+        sidePanelContent.innerHTML = contentHTML;
+
+        setTimeout(() => {
+            const closeBtn = document.getElementById('close-event-side-panel');
+            const maximizeBtn = document.getElementById('maximize-event-side-panel');
+            if (closeBtn && !closeBtn.dataset.listenerAttached) {
+                closeBtn.dataset.listenerAttached = 'true';
+                closeBtn.addEventListener('click', () => closeEventDetailsSidePanel());
+            }
+            if (maximizeBtn && !maximizeBtn.dataset.listenerAttached) {
+                maximizeBtn.dataset.listenerAttached = 'true';
+                maximizeBtn.addEventListener('click', () => toggleSidePanelMaximize('event-details-side-panel', 'maximize-event-side-panel'));
+            }
+            if (overlay && !overlay.dataset.listenerAttached) {
+                overlay.dataset.listenerAttached = 'true';
+                overlay.addEventListener('click', () => closeEventDetailsSidePanel());
+            }
+        }, 100);
+
+    } catch (error) {
+        console.error('Error loading event details:', error);
+        sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Failed to load event details.</div>';
+    }
+}
+
+// Close Event Details Side Panel
+function closeEventDetailsSidePanel() {
+    const sidePanel = document.getElementById('event-details-side-panel');
+    const overlay = document.getElementById('event-details-side-panel-overlay');
+
+    if (sidePanel) {
+        sidePanel.classList.remove('show');
+        sidePanel.classList.remove('side-panel-maximized');
+        setTimeout(() => {
+            sidePanel.style.display = 'none';
+        }, 300);
+    }
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+// Open Pledge Details Side Panel
+async function openPledgeDetailsSidePanel(pledgeId) {
+    const sidePanel = document.getElementById('pledge-details-side-panel');
+    const sidePanelContent = document.getElementById('pledge-details-side-panel-content');
+    const overlay = document.getElementById('pledge-details-side-panel-overlay');
+
+    if (!sidePanel || !sidePanelContent || !overlay) {
+        if (window.viewPledgeDetails) {
+            window.viewPledgeDetails(pledgeId);
+        }
+        return;
+    }
+
+    sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-light);">Loading pledge details...</div>';
+    sidePanel.style.display = 'flex';
+    sidePanel.classList.add('show');
+    overlay.style.display = 'block';
+    void sidePanel.offsetWidth;
+
+    try {
+        const {
+            doc,
+            getDoc
+        } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const pledgeRef = doc(window.db, 'pledges', pledgeId);
+        const pledgeSnap = await getDoc(pledgeRef);
+
+        if (!pledgeSnap.exists()) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Pledge not found.</div>';
+            return;
+        }
+
+        const data = pledgeSnap.data();
+
+        if (data.email !== window.userEmail) {
+            sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">You do not have permission to view this pledge.</div>';
+            return;
+        }
+
+        const pledgeDate = data.recordedAt ? (data.recordedAt.toDate ? data.recordedAt.toDate() : new Date(data.recordedAt)) : new Date();
+        const dateStr = pledgeDate.toLocaleDateString('default', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+
+        let statusClass = 'status-pending';
+        let statusText = 'Undecided';
+        if (data.pledge === 'yes') {
+            statusClass = 'status-success';
+            statusText = 'Yes';
+        } else if (data.pledge === 'no' || data.pledge === 'negative') {
+            statusClass = 'status-danger';
+            statusText = 'No';
+        }
+
+        const contentHTML = '<div style="display: flex; flex-direction: column; gap: 20px;">' +
+            '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;">' +
+            '<div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Pledge Information</div>' +
+            '<div style="font-size: 18px; font-weight: 600; color: var(--text-color); margin-bottom: 16px;">' + (data.voterName || 'N/A') + '</div>' +
+            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Pledge</div><div><span class="status-badge ' + statusClass + '">' + statusText + '</span></div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Date</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + dateStr + '</div></div>' +
+            '<div><div style="font-size: 12px; color: var(--text-light); margin-bottom: 6px;">Voter ID</div><div style="font-size: 15px; font-weight: 600; color: var(--text-color);">' + (data.voterId || 'N/A') + '</div></div>' +
+            '</div></div>' +
+            (data.notes ? '<div style="background: var(--light-color); padding: 20px; border-radius: 12px;"><div style="font-size: 13px; color: var(--text-light); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Notes</div><div style="font-size: 14px; color: var(--text-color); line-height: 1.7;">' + data.notes + '</div></div>' : '') +
+            '</div>';
+
+        sidePanelContent.innerHTML = contentHTML;
+
+        setTimeout(() => {
+            const closeBtn = document.getElementById('close-pledge-side-panel');
+            const maximizeBtn = document.getElementById('maximize-pledge-side-panel');
+            if (closeBtn && !closeBtn.dataset.listenerAttached) {
+                closeBtn.dataset.listenerAttached = 'true';
+                closeBtn.addEventListener('click', () => closePledgeDetailsSidePanel());
+            }
+            if (maximizeBtn && !maximizeBtn.dataset.listenerAttached) {
+                maximizeBtn.dataset.listenerAttached = 'true';
+                maximizeBtn.addEventListener('click', () => toggleSidePanelMaximize('pledge-details-side-panel', 'maximize-pledge-side-panel'));
+            }
+            if (overlay && !overlay.dataset.listenerAttached) {
+                overlay.dataset.listenerAttached = 'true';
+                overlay.addEventListener('click', () => closePledgeDetailsSidePanel());
+            }
+        }, 100);
+
+    } catch (error) {
+        console.error('Error loading pledge details:', error);
+        sidePanelContent.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--danger-color);">Failed to load pledge details.</div>';
+    }
+}
+
+// Close Pledge Details Side Panel
+function closePledgeDetailsSidePanel() {
+    const sidePanel = document.getElementById('pledge-details-side-panel');
+    const overlay = document.getElementById('pledge-details-side-panel-overlay');
+
+    if (sidePanel) {
+        sidePanel.classList.remove('show');
+        sidePanel.classList.remove('side-panel-maximized');
+        setTimeout(() => {
+            sidePanel.style.display = 'none';
+        }, 300);
+    }
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+// Expose functions to window
+window.openCallDetailsSidePanel = openCallDetailsSidePanel;
+window.closeCallDetailsSidePanel = closeCallDetailsSidePanel;
+window.toggleSidePanelMaximize = toggleSidePanelMaximize;
+window.openVoterDetailsSidePanel = openVoterDetailsSidePanel;
+window.closeVoterDetailsSidePanel = closeVoterDetailsSidePanel;
+window.openCandidateDetailsSidePanel = openCandidateDetailsSidePanel;
+window.closeCandidateDetailsSidePanel = closeCandidateDetailsSidePanel;
+window.openEventDetailsSidePanel = openEventDetailsSidePanel;
+window.closeEventDetailsSidePanel = closeEventDetailsSidePanel;
+window.openPledgeDetailsSidePanel = openPledgeDetailsSidePanel;
+window.closePledgeDetailsSidePanel = closePledgeDetailsSidePanel;
+
+// Delete Call Function - Expose to window immediately
+window.deleteCall = async function deleteCall(callId) {
+    if (!window.db || !window.userEmail) {
+        if (window.showErrorDialog) {
+            window.showErrorDialog('Database not initialized. Please refresh the page.');
+        } else {
+            alert('Database not initialized. Please refresh the page.');
+        }
+        return;
+    }
+
+    // Show confirmation dialog with fallback
+    let confirmed = false;
+    if (window.showConfirm) {
+        try {
+            confirmed = await window.showConfirm(
+                'Are you sure you want to delete this call record? This action cannot be undone.',
+                'Delete Call'
+            );
+        } catch (error) {
+            console.error('[deleteCall] Error showing confirm dialog:', error);
+            confirmed = confirm('Are you sure you want to delete this call record? This action cannot be undone.');
+        }
+    } else if (window.showDialog) {
+        try {
+            confirmed = await window.showDialog({
+                type: 'confirm',
+                title: 'Delete Call',
+                message: 'Are you sure you want to delete this call record? This action cannot be undone.',
+                confirmText: 'Delete',
+                cancelText: 'Cancel'
+            });
+        } catch (error) {
+            console.error('[deleteCall] Error showing confirm dialog:', error);
+            confirmed = confirm('Are you sure you want to delete this call record? This action cannot be undone.');
+        }
+    } else {
+        confirmed = confirm('Are you sure you want to delete this call record? This action cannot be undone.');
+    }
+
     if (!confirmed) return;
 
     try {
@@ -13283,13 +15394,21 @@ async function deleteCall(callId) {
         const callSnap = await getDoc(callRef);
 
         if (!callSnap.exists()) {
-            window.showErrorDialog('Call record not found.', 'Error');
+            if (window.showErrorDialog) {
+                window.showErrorDialog('Call record not found.', 'Error');
+            } else {
+                alert('Call record not found.');
+            }
             return;
         }
 
         const callData = callSnap.data();
         if (callData.campaignEmail !== window.userEmail && callData.email !== window.userEmail) {
-            window.showErrorDialog('You do not have permission to delete this call record.', 'Access Denied');
+            if (window.showErrorDialog) {
+                window.showErrorDialog('You do not have permission to delete this call record.', 'Access Denied');
+            } else {
+                alert('You do not have permission to delete this call record.');
+            }
             return;
         }
 
@@ -13307,14 +15426,36 @@ async function deleteCall(callId) {
             window.loadCallsData(true);
         }
 
-        window.showSuccess('Call record deleted successfully.', 'Deleted');
-        closeModal(); // Close the call detail modal
+        // Show success message with fallback
+        if (window.showSuccess) {
+            window.showSuccess('Call record deleted successfully.', 'Deleted');
+        } else if (window.showSuccessMessage) {
+            window.showSuccessMessage('Call record deleted successfully.', 'Deleted');
+        } else {
+            alert('Call record deleted successfully.');
+        }
+
+        // Close modal if open
+        if (typeof closeModal === 'function') {
+            closeModal();
+        }
     } catch (error) {
         console.error('Error deleting call:', error);
-        window.showErrorDialog('Failed to delete call record. Please try again.', 'Error');
+        let errorMessage = 'Failed to delete call record. Please try again.';
+        if (error.code === 'permission-denied') {
+            errorMessage = 'Permission denied. You do not have permission to delete this call record.';
+        } else if (error.message) {
+            errorMessage = 'Failed to delete call record: ' + error.message;
+        }
+
+        if (window.showErrorDialog) {
+            window.showErrorDialog(errorMessage, 'Error');
+        } else {
+            alert(errorMessage);
+        }
     }
-}
-window.deleteCall = deleteCall;
+};
+// Function is already assigned to window.deleteCall above
 window.deleteAgent = deleteAgent;
 window.loadPageContent = loadPageContent;
 // Delete a single notification
@@ -13362,7 +15503,6 @@ Error: $ {
 }
 `;
         }
-
         if (window.showErrorDialog) {
             window.showErrorDialog(errorMessage, 'Error');
         } else {
@@ -13580,12 +15720,14 @@ for $ {
         }
     }
 }
+window.changeAgentAccessCodeInModal = changeAgentAccessCodeInModal;
 
 // Change agent access code (standalone function - kept for compatibility)
 async function changeAgentAccessCode(agentId) {
     // This function can still be called from elsewhere, but redirects to generate link modal
     await generateAgentLink(agentId);
 }
+window.changeAgentAccessCode = changeAgentAccessCode;
 
 // Copy new agent code to clipboard
 function copyNewAgentCode() {
@@ -13605,6 +15747,7 @@ function copyNewAgentCode() {
         }
     }
 }
+window.copyNewAgentCode = copyNewAgentCode;
 
 // Show agent selection modal for voter assignment with two-panel layout
 async function showAgentSelectionForVoterAssignment() {
@@ -13645,23 +15788,18 @@ async function showAgentSelectionForVoterAssignment() {
             return;
         }
 
-        // Create modal for agent and voter assignment
-        const modalOverlay = ensureModalExists();
-        if (!modalOverlay) return;
+        // Open side panel for agent and voter assignment
+        const sidePanel = document.getElementById('assign-voters-side-panel');
+        const sidePanelContent = document.getElementById('assign-voters-side-panel-content');
+        const overlay = document.getElementById('assign-voters-side-panel-overlay');
 
-        const modalBody = document.getElementById('modal-body');
-        const modalTitle = document.getElementById('modal-title');
-
-        if (!modalBody || !modalTitle) return;
-
-        // Update modal container to be wider for three-panel layout
-        const modalContainer = modalOverlay.querySelector('.modal-container');
-        if (modalContainer) {
-            modalContainer.style.maxWidth = '1400px';
-            modalContainer.style.width = '95%';
+        if (!sidePanel || !sidePanelContent || !overlay) {
+            console.error('[showAgentSelectionForVoterAssignment] Side panel elements not found');
+            if (window.showErrorDialog) {
+                window.showErrorDialog('Side panel elements not found. Please refresh the page.');
+            }
+            return;
         }
-
-        modalTitle.textContent = 'Assign Voters to Agents';
 
         // Build agents list
         const agents = [];
@@ -13694,237 +15832,147 @@ async function showAgentSelectionForVoterAssignment() {
             });
         });
 
-        // Create three-panel layout
-        let html = ` <
-div class = "assign-voters-layout"
-style = "display: flex; gap: 16px; height: 600px; min-height: 500px;" >
-    <
-    !--Left Panel: Agents List-- >
-    <
-    div class = "assign-panel-left"
-style = "flex: 0 0 250px; display: flex; flex-direction: column; border: 2px solid var(--border-color); border-radius: 12px; overflow: hidden; background: white;" >
-    <
-    div style = "background: var(--primary-50); padding: 16px; border-bottom: 2px solid var(--border-color);" >
-    <
-    h3 style = "margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color);" > Agents < /h3> <
-p style = "margin: 4px 0 0 0; font-size: 12px; color: var(--text-light);" > Select an agent < /p> < /
-div > <
-    div id = "agents-list-container"
-style = "flex: 1; overflow-y: auto; padding: 12px;" >
+        // Create three-panel layout with fixed HTML
+        let html = `<div class="assign-voters-layout" style="display: flex; gap: 16px; height: calc(100vh - 100px); min-height: 500px;">
+    <!--Left Panel: Agents List-->
+    <div class="assign-panel-left" style="flex: 0 0 250px; display: flex; flex-direction: column; border: 2px solid var(--border-color); border-radius: 12px; overflow: hidden; background: white;">
+        <div style="background: var(--primary-50); padding: 16px; border-bottom: 2px solid var(--border-color);">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color);">Agents</h3>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-light);">Select an agent</p>
+        </div>
+        <div id="agents-list-container" style="flex: 1; overflow-y: auto; padding: 12px;">
     `;
 
         agents.forEach((agent, index) => {
-            html += ` <
-    button
-class = "agent-select-btn"
-data - agent - id = "${agent.id}"
-onclick = "selectAgentForAssignment('${agent.id}')"
-style = "width: 100%; text-align: left; padding: 14px; margin-bottom: 8px; border: 2px solid var(--border-color); 
-border - radius: 8 px;
-background: white;
-cursor: pointer;
-transition: all 0.2 s;
-display: flex;
-flex - direction: column;
-align - items: flex - start;
-gap: 4 px;
-" > <
-div style = "font-weight: 600; font-size: 14px; color: var(--text-color);" > $ {
-    agent.name
-} < /div> <
-div style = "font-size: 12px; color: var(--text-light);" > $ {
-    agent.assignedArea
-} < /div> < /
-button >
-    `;
+            html += `<button class="agent-select-btn" data-agent-id="${agent.id}" onclick="selectAgentForAssignment('${agent.id}')" style="width: 100%; text-align: left; padding: 14px; margin-bottom: 8px; border: 2px solid var(--border-color); border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
+            <div style="font-weight: 600; font-size: 14px; color: var(--text-color);">${agent.name}</div>
+            <div style="font-size: 12px; color: var(--text-light);">${agent.assignedArea}</div>
+        </button>`;
         });
 
-        html += ` <
-    /div> < /
-div >
+        html += `</div></div>
 
-    <
-    !--Center Panel: Voters List-- >
-    <
-    div class = "assign-panel-center"
-style = "flex: 1; display: flex; flex-direction: column; border: 2px solid var(--border-color); border-radius: 12px; overflow: hidden; background: white; min-width: 0;" >
-    <
-    div style = "background: var(--primary-50); padding: 16px; border-bottom: 2px solid var(--border-color);" >
-    <
-    h3 style = "margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color);" > Voters < /h3> <
-p style = "margin: 4px 0 0 0; font-size: 12px; color: var(--text-light);"
-id = "selected-agent-info" > Select an agent first < /p> < /
-div > <
-    div style = "padding: 12px; border-bottom: 2px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;" >
-    <
-    div style = "display: flex; gap: 8px;" >
-    <
-    input type = "text"
-id = "voter-search-assign"
-placeholder = "Search voters by name, ID, island, address..."
-style = "flex: 1; padding: 10px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 14px;" >
-    <
-    /div> <
-div style = "display: flex; gap: 8px; flex-wrap: wrap;" >
-    <
-    button id = "filter-toggle-btn"
-class = "btn-secondary btn-compact"
-onclick = "toggleVoterFilters()"
-style = "font-size: 12px; padding: 8px 12px;" >
-    <
-    svg xmlns = "http://www.w3.org/2000/svg"
-width = "14"
-height = "14"
-viewBox = "0 0 24 24"
-fill = "none"
-stroke = "currentColor"
-stroke - width = "2"
-stroke - linecap = "round"
-stroke - linejoin = "round"
-style = "margin-right: 6px; display: inline-block;" >
-    <
-    polygon points = "22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" > < /polygon> < /
-svg >
-    Filters <
-    /button> < /
-div > <
-    div id = "voter-filters-panel"
-style = "display: none; padding: 10px; background: var(--light-color); border-radius: 8px; border: 1px solid var(--border-color);" >
-    <
-    div style = "display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;" >
-    <
-    div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Island < /label> <
-select id = "filter-island"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;" >
-    <
-    option value = "" > All Islands < /option> < /
-select > <
-    /div> <
-div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Atoll < /label> <
-select id = "filter-atoll"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;" >
-    <
-    option value = "" > All Atolls < /option> < /
-select > <
-    /div> <
-div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Constituency < /label> <
-select id = "filter-constituency"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;" >
-    <
-    option value = "" > All Constituencies < /option> < /
-select > <
-    /div> <
-div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Address < /label> <
-select id = "filter-address"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; position: relative; z-index: 1;" >
-    <
-    option value = "" > All Addresses < /option> < /
-select > <
-    /div> <
-div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Ballot Box < /label> <
-select id = "filter-ballot"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;" >
-    <
-    option value = "" > All Ballot Boxes < /option> < /
-select > <
-    /div> <
-div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Gender < /label> <
-select id = "filter-gender"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;" >
-    <
-    option value = "" > All Genders < /option> <
-option value = "Male" > Male < /option> <
-option value = "Female" > Female < /option> < /
-select > <
-    /div> <
-div style = "position: relative;" >
-    <
-    label style = "display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;" > Filter by Status < /label> <
-select id = "filter-status"
-style = "width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;" >
-    <
-    option value = "" > All Status < /option> <
-option value = "unassigned" > Unassigned < /option> <
-option value = "assigned" > Assigned to Selected < /option> <
-option value = "assigned-other" > Assigned to Other < /option> < /
-select > <
-    /div> < /
-div > <
-    /div> < /
-div > <
-    div id = "voters-list-container"
-style = "flex: 1; overflow-y: auto; padding: 12px;" >
-    <
-    div style = "text-align: center; padding: 40px; color: var(--text-light);" >
-    <
-    p > Please select an agent to view and assign voters < /p> < /
-div > <
-    /div> < /
-div >
+    <!--Center Panel: Voters List-->
+    <div class="assign-panel-center" style="flex: 1; display: flex; flex-direction: column; border: 2px solid var(--border-color); border-radius: 12px; overflow: hidden; background: white; min-width: 0;">
+        <div style="background: var(--primary-50); padding: 16px; border-bottom: 2px solid var(--border-color);">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color);">Voters</h3>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-light);" id="selected-agent-info">Select an agent first</p>
+        </div>
+        <div style="padding: 12px; border-bottom: 2px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="voter-search-assign" placeholder="Search voters by name, ID, island, address..." style="flex: 1; padding: 10px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button id="filter-toggle-btn" class="btn-secondary btn-compact" onclick="toggleVoterFilters()" style="font-size: 12px; padding: 8px 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; display: inline-block;">
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                    </svg>
+                    Filters
+                </button>
+            </div>
+            <div id="voter-filters-panel" style="display: none; padding: 10px; background: var(--light-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Island</label>
+                        <select id="filter-island" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                            <option value="">All Islands</option>
+                        </select>
+                    </div>
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Atoll</label>
+                        <select id="filter-atoll" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                            <option value="">All Atolls</option>
+                        </select>
+                    </div>
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Constituency</label>
+                        <select id="filter-constituency" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                            <option value="">All Constituencies</option>
+                        </select>
+                    </div>
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Address</label>
+                        <select id="filter-address" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; position: relative; z-index: 1;">
+                            <option value="">All Addresses</option>
+                        </select>
+                    </div>
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Ballot Box</label>
+                        <select id="filter-ballot" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                            <option value="">All Ballot Boxes</option>
+                        </select>
+                    </div>
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Gender</label>
+                        <select id="filter-gender" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                            <option value="">All Genders</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+                    <div style="position: relative;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; text-transform: uppercase;">Filter by Status</label>
+                        <select id="filter-status" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                            <option value="">All Status</option>
+                            <option value="unassigned">Unassigned</option>
+                            <option value="assigned">Assigned to Selected</option>
+                            <option value="assigned-other">Assigned to Other</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="voters-list-container" style="flex: 1; overflow-y: auto; padding: 12px;">
+            <div style="text-align: center; padding: 40px; color: var(--text-light);">
+                <p>Please select an agent to view and assign voters</p>
+            </div>
+        </div>
+    </div>
 
-    <
-    !--Right Panel: Voter Details-- >
-    <
-    div class = "assign-panel-right"
-style = "flex: 0 0 320px; display: flex; flex-direction: column; border: 2px solid var(--border-color); border-radius: 12px; overflow: hidden; background: white;" >
-    <
-    div style = "background: var(--primary-50); padding: 16px; border-bottom: 2px solid var(--border-color);" >
-    <
-    h3 style = "margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color);" > Voter Details < /h3> <
-p style = "margin: 4px 0 0 0; font-size: 12px; color: var(--text-light);" > Select a voter to view details < /p> < /
-div > <
-    div id = "voter-details-container"
-style = "flex: 1; overflow-y: auto; padding: 16px;" >
-    <
-    div style = "text-align: center; padding: 40px; color: var(--text-light);" >
-    <
-    svg xmlns = "http://www.w3.org/2000/svg"
-width = "48"
-height = "48"
-viewBox = "0 0 24 24"
-fill = "none"
-stroke = "currentColor"
-stroke - width = "1.5"
-stroke - linecap = "round"
-stroke - linejoin = "round"
-style = "margin: 0 auto 16px; opacity: 0.5;" >
-    <
-    path d = "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" > < /path> <
-circle cx = "12"
-cy = "7"
-r = "4" > < /circle> < /
-svg > <
-    p style = "margin: 0;" > Select a voter from the list to view full details < /p> < /
-div > <
-    /div> < /
-div > <
-    /div> <
-div id = "assignment-error"
-class = "error-message"
-style = "display: none; margin-top: 15px;" > < /div> <
-div class = "modal-footer"
-style = "margin-top: 20px; display: flex; justify-content: flex-end; gap: 12px;" >
-    <
-    button type = "button"
-class = "btn-secondary btn-compact"
-onclick = "closeModal()" > Close < /button> < /
-div >
-    `;
+    <!--Right Panel: Voter Details-->
+    <div class="assign-panel-right" style="flex: 0 0 320px; display: flex; flex-direction: column; border: 2px solid var(--border-color); border-radius: 12px; overflow: hidden; background: white;">
+        <div style="background: var(--primary-50); padding: 16px; border-bottom: 2px solid var(--border-color);">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-color);">Voter Details</h3>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-light);">Select a voter to view details</p>
+        </div>
+        <div id="voter-details-container" style="flex: 1; overflow-y: auto; padding: 16px;">
+            <div style="text-align: center; padding: 40px; color: var(--text-light);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto 16px; opacity: 0.5;">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <p style="margin: 0;">Select a voter from the list to view full details</p>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="assignment-error" class="error-message" style="display: none; margin-top: 15px;"></div>`;
 
-        modalBody.innerHTML = html;
-        modalOverlay.style.display = 'flex';
+        sidePanelContent.innerHTML = html;
+
+        // Show side panel with animation
+        sidePanel.style.display = 'flex';
+        overlay.style.display = 'block';
+        // Trigger reflow for animation
+        void sidePanel.offsetWidth;
+        sidePanel.style.transform = 'translateX(0)';
+
+        // Setup close button
+        const closeBtn = document.getElementById('close-assign-voters-side-panel');
+        if (closeBtn && !closeBtn.dataset.listenerAttached) {
+            closeBtn.dataset.listenerAttached = 'true';
+            closeBtn.addEventListener('click', function() {
+                closeAssignVotersSidePanel();
+            });
+        }
+
+        // Setup overlay click to close
+        if (overlay && !overlay.dataset.listenerAttached) {
+            overlay.dataset.listenerAttached = 'true';
+            overlay.addEventListener('click', function() {
+                closeAssignVotersSidePanel();
+            });
+        }
 
         // Store data globally for use in other functions
         window.assignmentData = {
@@ -14006,6 +16054,23 @@ div >
     }
 }
 
+// Close assign voters side panel
+function closeAssignVotersSidePanel() {
+    const sidePanel = document.getElementById('assign-voters-side-panel');
+    const overlay = document.getElementById('assign-voters-side-panel-overlay');
+
+    if (sidePanel) {
+        sidePanel.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            sidePanel.style.display = 'none';
+        }, 300);
+    }
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+window.closeAssignVotersSidePanel = closeAssignVotersSidePanel;
+
 // Select agent for assignment
 function selectAgentForAssignment(agentId) {
     if (!window.assignmentData) return;
@@ -14042,33 +16107,19 @@ Assigning voters to: $ {
     // Clear voter details panel
     const detailsContainer = document.getElementById('voter-details-container');
     if (detailsContainer) {
-        detailsContainer.innerHTML = ` <
-div style = "text-align: center; padding: 40px; color: var(--text-light);" >
-    <
-    svg xmlns = "http://www.w3.org/2000/svg"
-width = "48"
-height = "48"
-viewBox = "0 0 24 24"
-fill = "none"
-stroke = "currentColor"
-stroke - width = "1.5"
-stroke - linecap = "round"
-stroke - linejoin = "round"
-style = "margin: 0 auto 16px; opacity: 0.5;" >
-    <
-    path d = "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" > < /path> <
-circle cx = "12"
-cy = "7"
-r = "4" > < /circle> < /
-svg > <
-    p style = "margin: 0;" > Select a voter from the list to view full details < /p> < /
-div >
-    `;
+        detailsContainer.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-light);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto 16px; opacity: 0.5;">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <p style="margin: 0;">Select a voter from the list to view full details</p>
+    </div>`;
     }
 
     // Render voters list
     renderVotersForAssignment(agentId);
 }
+window.selectAgentForAssignment = selectAgentForAssignment;
 
 // Render voters list for assignment with tree view and sorting
 function renderVotersForAssignment(agentId) {
@@ -14077,95 +16128,112 @@ function renderVotersForAssignment(agentId) {
     const votersContainer = document.getElementById('voters-list-container');
     if (!votersContainer) return;
 
+    // Get selected agent's island
+    const selectedAgent = window.assignmentData.agents.find(a => a.id === agentId);
+    const agentIsland = selectedAgent ? (selectedAgent.assignedArea || '') : '';
+
     // Get current filter settings
-    const filterIsland = document.getElementById('filter-island').value || '';
-    const filterAtoll = document.getElementById('filter-atoll').value || '';
-    const filterConstituency = document.getElementById('filter-constituency').value || '';
-    const filterAddress = document.getElementById('filter-address').value || '';
-    const filterBallot = document.getElementById('filter-ballot').value || '';
-    const filterGender = document.getElementById('filter-gender').value || '';
-    const filterStatus = document.getElementById('filter-status').value || '';
-    const searchTerm = (document.getElementById('voter-search-assign').value || '').toLowerCase();
+    const filterIslandEl = document.getElementById('filter-island');
+    const filterAtollEl = document.getElementById('filter-atoll');
+    const filterConstituencyEl = document.getElementById('filter-constituency');
+    const filterAddressEl = document.getElementById('filter-address');
+    const filterBallotEl = document.getElementById('filter-ballot');
+    const filterGenderEl = document.getElementById('filter-gender');
+    const filterStatusEl = document.getElementById('filter-status');
+
+    const filterIsland = filterIslandEl ? filterIslandEl.value || '' : '';
+    const filterAtoll = filterAtollEl ? filterAtollEl.value || '' : '';
+    const filterConstituency = filterConstituencyEl ? filterConstituencyEl.value || '' : '';
+    const filterAddress = filterAddressEl ? filterAddressEl.value || '' : '';
+    const filterBallot = filterBallotEl ? filterBallotEl.value || '' : '';
+    const filterGender = filterGenderEl ? filterGenderEl.value || '' : '';
+    const filterStatus = filterStatusEl ? filterStatusEl.value || '' : '';
+    const searchTerm = (document.getElementById('voter-search-assign') ? document.getElementById('voter-search-assign').value || '' : '').toLowerCase();
     const treeViewEnabled = window.assignmentData.treeViewEnabled || false;
 
-    // Check cache first (if filters haven't changed)x`
-const cacheKey = `${filterIsland}-${filterAtoll}-${filterConstituency}-${filterAddress}-${filterBallot}-${filterGender}-${filterStatus}-${searchTerm}`;
-let filteredVoters;
+    // Check cache first (if filters haven't changed)
+    const cacheKey = `${agentId}-${agentIsland}-${filterIsland}-${filterAtoll}-${filterConstituency}-${filterAddress}-${filterBallot}-${filterGender}-${filterStatus}-${searchTerm}`;
+    let filteredVoters;
 
-if (window.assignmentData.cachedResults && window.assignmentData.cachedResults.key === cacheKey) {
-    filteredVoters = window.assignmentData.cachedResults.data;
-} else {
-    // Filter voters
-    filteredVoters = [...window.assignmentData.voters];
+    if (window.assignmentData.cachedResults && window.assignmentData.cachedResults.key === cacheKey) {
+        filteredVoters = window.assignmentData.cachedResults.data;
+    } else {
+        // Filter voters - FIRST filter by agent's island
+        filteredVoters = [...window.assignmentData.voters];
 
-    // Apply search filter first (most selective)
-    if (searchTerm) {
-        filteredVoters = filteredVoters.filter(v => {
-            const name = (v.name || '').toLowerCase();
-            const id = (v.idNumber || '').toLowerCase();
-            const island = (v.island || '').toLowerCase();
-            const address = (v.permanentAddress || '').toLowerCase();
-            const atoll = (v.atoll || '').toLowerCase();
-            const constituency = (v.constituency || '').toLowerCase();
-            const ballot = (v.ballotBox || '').toLowerCase();
-            return name.includes(searchTerm) || id.includes(searchTerm) ||
-                island.includes(searchTerm) || address.includes(searchTerm) ||
-                atoll.includes(searchTerm) || constituency.includes(searchTerm) ||
-                ballot.includes(searchTerm);
-        });
-    }
-
-    // Apply filters
-    if (filterIsland) {
-        filteredVoters = filteredVoters.filter(v => v.island === filterIsland);
-    }
-    if (filterAtoll) {
-        filteredVoters = filteredVoters.filter(v => v.atoll === filterAtoll);
-    }
-    if (filterConstituency) {
-        filteredVoters = filteredVoters.filter(v => v.constituency === filterConstituency);
-    }
-    if (filterAddress) {
-        filteredVoters = filteredVoters.filter(v => v.permanentAddress === filterAddress);
-    }
-    if (filterBallot) {
-        filteredVoters = filteredVoters.filter(v => v.ballotBox === filterBallot);
-    }
-    if (filterGender) {
-        filteredVoters = filteredVoters.filter(v => v.gender === filterGender);
-    }
-    if (filterStatus) {
-        if (filterStatus === 'unassigned') {
-            filteredVoters = filteredVoters.filter(v => !v.currentAgent);
-        } else if (filterStatus === 'assigned') {
-            filteredVoters = filteredVoters.filter(v => v.currentAgent === agentId);
-        } else if (filterStatus === 'assigned-other') {
-            filteredVoters = filteredVoters.filter(v => v.currentAgent && v.currentAgent !== agentId);
+        // Filter by agent's island (show only voters from the same island as the agent)
+        if (agentIsland) {
+            filteredVoters = filteredVoters.filter(v => v.island === agentIsland);
         }
+
+        // Apply search filter first (most selective)
+        if (searchTerm) {
+            filteredVoters = filteredVoters.filter(v => {
+                const name = (v.name || '').toLowerCase();
+                const id = (v.idNumber || '').toLowerCase();
+                const island = (v.island || '').toLowerCase();
+                const address = (v.permanentAddress || '').toLowerCase();
+                const atoll = (v.atoll || '').toLowerCase();
+                const constituency = (v.constituency || '').toLowerCase();
+                const ballot = (v.ballotBox || '').toLowerCase();
+                return name.includes(searchTerm) || id.includes(searchTerm) ||
+                    island.includes(searchTerm) || address.includes(searchTerm) ||
+                    atoll.includes(searchTerm) || constituency.includes(searchTerm) ||
+                    ballot.includes(searchTerm);
+            });
+        }
+
+        // Apply filters
+        if (filterIsland) {
+            filteredVoters = filteredVoters.filter(v => v.island === filterIsland);
+        }
+        if (filterAtoll) {
+            filteredVoters = filteredVoters.filter(v => v.atoll === filterAtoll);
+        }
+        if (filterConstituency) {
+            filteredVoters = filteredVoters.filter(v => v.constituency === filterConstituency);
+        }
+        if (filterAddress) {
+            filteredVoters = filteredVoters.filter(v => v.permanentAddress === filterAddress);
+        }
+        if (filterBallot) {
+            filteredVoters = filteredVoters.filter(v => v.ballotBox === filterBallot);
+        }
+        if (filterGender) {
+            filteredVoters = filteredVoters.filter(v => v.gender === filterGender);
+        }
+        if (filterStatus) {
+            if (filterStatus === 'unassigned') {
+                filteredVoters = filteredVoters.filter(v => !v.currentAgent);
+            } else if (filterStatus === 'assigned') {
+                filteredVoters = filteredVoters.filter(v => v.currentAgent === agentId);
+            } else if (filterStatus === 'assigned-other') {
+                filteredVoters = filteredVoters.filter(v => v.currentAgent && v.currentAgent !== agentId);
+            }
+        }
+
+        // Sort by name by default (no sort dropdown needed)
+        filteredVoters.sort((a, b) => {
+            return (a.name || '').localeCompare(b.name || '');
+        });
+
+        // Cache results
+        window.assignmentData.cachedResults = {
+            key: cacheKey,
+            data: filteredVoters
+        };
     }
 
-    // Sort by name by default (no sort dropdown needed)
-    filteredVoters.sort((a, b) => {
-        return (a.name || '').localeCompare(b.name || '');
-    });
+    // Store filtered voters for pagination
+    window.assignmentData.filteredVoters = filteredVoters;
 
-    // Cache results
-    window.assignmentData.cachedResults = {
-        key: cacheKey,
-        data: filteredVoters
-    };
-}
+    // Update filter dropdowns with available options (only if not cached)
+    if (!window.assignmentData.cachedResults || window.assignmentData.cachedResults.key !== cacheKey) {
+        updateFilterDropdowns(filteredVoters, filterIsland, filterAtoll);
+    }
 
-// Store filtered voters for pagination
-window.assignmentData.filteredVoters = filteredVoters;
-
-// Update filter dropdowns with available options (only if not cached)
-if (!window.assignmentData.cachedResults || window.assignmentData.cachedResults.key !== cacheKey) {
-    updateFilterDropdowns(filteredVoters, filterIsland, filterAtoll);
-}
-
-// Always render list view (tree view removed for new design)
-renderListView(filteredVoters, agentId, votersContainer);
+    // Always render list view (tree view removed for new design)
+    renderListView(filteredVoters, agentId, votersContainer);
 }
 
 // Render list view (flat list) with pagination
@@ -14968,13 +17036,25 @@ window.saveVoterAssignment = saveVoterAssignment;
 window.generateAgentLink = generateAgentLink;
 window.copyAgentLink = copyAgentLink;
 window.copyAgentCode = copyAgentCode;
-window.copyNewAgentCode = copyNewAgentCode;
-window.changeAgentAccessCode = changeAgentAccessCode;
-window.changeAgentAccessCodeInModal = changeAgentAccessCodeInModal;
+if (typeof copyNewAgentCode !== 'undefined') {
+    window.copyNewAgentCode = copyNewAgentCode;
+}
+if (typeof changeAgentAccessCode !== 'undefined') {
+    window.changeAgentAccessCode = changeAgentAccessCode;
+}
+if (typeof changeAgentAccessCodeInModal !== 'undefined') {
+    window.changeAgentAccessCodeInModal = changeAgentAccessCodeInModal;
+}
 window.viewAgentPerformance = viewAgentPerformance;
-window.showAgentSelectionForVoterAssignment = showAgentSelectionForVoterAssignment;
-window.selectAgentForAssignment = selectAgentForAssignment;
-window.renderVotersForAssignment = renderVotersForAssignment;
+if (typeof showAgentSelectionForVoterAssignment !== 'undefined') {
+    window.showAgentSelectionForVoterAssignment = showAgentSelectionForVoterAssignment;
+}
+if (typeof selectAgentForAssignment !== 'undefined') {
+    window.selectAgentForAssignment = selectAgentForAssignment;
+}
+if (typeof renderVotersForAssignment !== 'undefined') {
+    window.renderVotersForAssignment = renderVotersForAssignment;
+}
 // Show voter details in right panel
 function showVoterDetailsForAssignment(voter) {
     if (!voter || !window.assignmentData) return;
@@ -15860,4 +17940,5 @@ window.removeCallerName = removeCallerName;
 window.copyCallPasswordFromModal = copyCallPasswordFromModal;
 window.deleteCallLink = deleteCallLink;
 window.copyCallLinkFromModal = copyCallLinkFromModal;
+window.copyCallCodeFromModal = copyCallCodeFromModal;
 window.copyCallCodeFromModal = copyCallCodeFromModal
