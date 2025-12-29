@@ -91,8 +91,6 @@ let isRegisteringClient = false; // Flag to prevent auth state handler from logg
 let adminPasswordStored = null; // Temporarily store admin password during registration (cleared after use)
 
 // Global filter state
-let globalConstituencyFilter = '';
-let globalIslandFilter = '';
 
 // Constituency-Island mapping - Use same structure as app.js
 // This will be synchronized with app.js constituencyIslandData
@@ -1060,23 +1058,6 @@ function renderClientsTable() {
     const searchInput = document.getElementById('client-search');
     const filterInput = document.getElementById('status-filter');
 
-    // Get filter values from admin panel filters OR header filters (main app)
-    const adminConstituencyFilter = document.getElementById('global-constituency-filter');
-    const adminIslandFilter = document.getElementById('global-island-filter');
-
-    // Prefer admin panel filters if available, otherwise use header filter state
-    let selectedConstituency = '';
-    let selectedIsland = '';
-
-    if (adminConstituencyFilter && adminIslandFilter) {
-        // Admin panel filters
-        selectedConstituency = adminConstituencyFilter.value || '';
-        selectedIsland = adminIslandFilter.value || '';
-    } else {
-        // No header filters - use empty values
-        selectedConstituency = '';
-        selectedIsland = '';
-    }
 
     const searchTerm = (searchInput && searchInput.value) ? searchInput.value.toLowerCase() : '';
     const statusFilter = (filterInput && filterInput.value) ? filterInput.value : 'all';
@@ -1092,38 +1073,7 @@ function renderClientsTable() {
             (statusFilter === 'suspended' && client.isActive === false) ||
             (statusFilter === 'pending' && !client.licenseActive);
 
-        // Apply constituency filter
-        let matchesConstituency = true;
-        if (selectedConstituency) {
-            matchesConstituency = client.constituency === selectedConstituency;
-        }
-
-        // Apply island filter with proper constituency-island relationship
-        let matchesIsland = true;
-        if (selectedIsland) {
-            if (selectedConstituency) {
-                // If both constituency and island are selected, island must match exactly
-                // and must belong to the selected constituency
-                const constituencyIslands = getIslandsForConstituency(selectedConstituency);
-                matchesIsland = client.island === selectedIsland && constituencyIslands.includes(selectedIsland);
-            } else {
-                // If only island is selected, check if it matches AND belongs to client's constituency
-                // This ensures island resolves correctly through its parent constituency
-                if (client.constituency) {
-                    const clientConstituencyIslands = getIslandsForConstituency(client.constituency);
-                    matchesIsland = client.island === selectedIsland && clientConstituencyIslands.includes(selectedIsland);
-                } else {
-                    // Fallback: just match island if constituency not available
-                    matchesIsland = client.island === selectedIsland;
-                }
-            }
-        } else if (selectedConstituency) {
-            // If constituency is selected but no island, show all islands in that constituency
-            const constituencyIslands = getIslandsForConstituency(selectedConstituency);
-            matchesIsland = client.constituency === selectedConstituency && constituencyIslands.includes(client.island);
-        }
-
-        return matchesSearch && matchesStatus && matchesConstituency && matchesIsland;
+        return matchesSearch && matchesStatus;
     });
 
     // Reset to first page when filtering/searching
@@ -2939,10 +2889,6 @@ function populateIslandDropdown(selectId, constituency = null) {
 
 // Initialize Filters
 function initializeFilters() {
-    // Populate global filter dropdowns
-    populateConstituencyDropdown('global-constituency-filter');
-    populateIslandDropdown('global-island-filter');
-
     // Populate client registration form dropdowns
     populateConstituencyDropdown('client-constituency-register');
     populateIslandDropdown('client-island-register');
@@ -2955,38 +2901,6 @@ function initializeFilters() {
             populateIslandDropdown('client-island-register', constituency);
         });
     }
-
-    // Handle global filter changes
-    const globalConstituencyFilterEl = document.getElementById('global-constituency-filter');
-    const globalIslandFilterEl = document.getElementById('global-island-filter');
-    const clearFiltersBtn = document.getElementById('clear-filters-btn');
-
-    if (globalConstituencyFilterEl) {
-        globalConstituencyFilterEl.addEventListener('change', (e) => {
-            globalConstituencyFilter = e.target.value;
-            // Update island dropdown based on selected constituency
-            populateIslandDropdown('global-island-filter', globalConstituencyFilter);
-            // Reset island filter if constituency changed
-            if (globalIslandFilterEl) {
-                globalIslandFilterEl.value = '';
-                globalIslandFilter = '';
-            }
-            updateFilterVisibility();
-            renderClientsTable();
-        });
-    }
-
-    if (globalIslandFilterEl) {
-        globalIslandFilterEl.addEventListener('change', (e) => {
-            globalIslandFilter = e.target.value;
-            updateFilterVisibility();
-            renderClientsTable();
-        });
-    }
-
-    if (clearFiltersBtn) {
-        clearFiltersBtn.addEventListener('click', () => {
-            const constituencyFilterEl = document.getElementById('global-constituency-filter');
             const islandFilterEl = document.getElementById('global-island-filter');
             if (constituencyFilterEl) constituencyFilterEl.value = '';
             if (islandFilterEl) islandFilterEl.value = '';
