@@ -2292,56 +2292,111 @@ input[type="file"] {
 
 @media (max-width: 768px) {
     .main-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 12px;
-        padding: 12px 16px;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        flex-wrap: nowrap;
     }
     
     .header-left {
-        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
         order: 1;
     }
     
     .header-right {
-        width: 100%;
-        justify-content: flex-end;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
         order: 2;
         margin-top: 0;
     }
     
     .header-filters {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-        width: 100%;
-        margin-left: 0 !important;
-        order: 3;
-        margin-top: 8px;
-    }
-    
-    .header-filters .filter-group {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 6px;
-    }
-    
-    .header-filters .filter-select {
-        width: 100%;
-        min-width: auto;
-    }
-    
-    .header-filters #header-clear-filters-btn {
-        width: 100%;
+        display: none;
     }
     
     .location-display-wrapper {
         flex: 1;
         min-width: 0;
+        max-width: 120px;
+        margin-left: 8px !important;
+    }
+    
+    .location-display-container {
+        min-width: 0 !important;
+        max-width: 120px !important;
+        padding: 5px 6px !important;
+        gap: 4px !important;
+    }
+    
+    .location-display-container svg {
+        width: 12px !important;
+        height: 12px !important;
+    }
+    
+    .location-values {
+        font-size: 9px !important;
+    }
+    
+    #location-chevron {
+        width: 10px !important;
+        height: 10px !important;
     }
     
     .breadcrumb {
         display: none;
+    }
+    
+    .menu-toggle {
+        flex-shrink: 0;
+        padding: 6px;
+    }
+    
+    .header-btn {
+        padding: 6px 8px;
+        flex-shrink: 0;
+    }
+    
+    .notification-btn,
+    .messenger-btn {
+        padding: 6px;
+        min-width: 32px;
+    }
+    
+    .notification-icon,
+    .notification-icon svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    
+    .messenger-btn svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    
+    .profile-trigger {
+        padding: 4px;
+    }
+    
+    .profile-avatar {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .profile-avatar svg {
+        width: 16px;
+        height: 16px;
+    }
+    
+    .menu-toggle .svg-icon {
+        width: 20px !important;
+        height: 20px !important;
     }
 }
 
